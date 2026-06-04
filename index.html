@@ -865,8 +865,10 @@
                 for (const tirage of data.historique) {
                     if (!tirage.gains || tirage.gains <= 0) continue;
                     const rg = tirage.rapportGains || {};
+                    const rg2 = tirage.rapportGains2 || {};
                     const date = new Date(tirage.date).toLocaleDateString('fr-FR');
 
+                    // 1er tirage
                     GRILLES.forEach((grille, idx) => {
                         const n = tirage.nums.filter(x => grille.includes(x)).length;
                         const c = (CHANCES[idx] === tirage.chance);
@@ -880,13 +882,27 @@
                         else if (n===2&&c) gain=rg['2+1']||0;
                         else if (n===2) gain=rg['2']||0;
                         else if (n<=1&&c) gain=rg['1+1']||0;
-
                         if (gain > 0) {
-                            // Numéros communs entre la grille et le tirage
                             const communs = tirage.nums.filter(x => grille.includes(x));
-                            lignesGagnantes.push({ date, grille: idx+1, nums: grille, chance: CHANCES[idx], communs, gain });
+                            lignesGagnantes.push({ date, grille: idx+1, nums: grille, chance: CHANCES[idx], communs, gain, tirage: '1er' });
                         }
                     });
+
+                    // 2nd tirage
+                    if (tirage.nums2 && tirage.nums2.length === 5) {
+                        GRILLES.forEach((grille, idx) => {
+                            const n = tirage.nums2.filter(x => grille.includes(x)).length;
+                            let gain2 = 0;
+                            if (n===5) gain2=rg2['5']||0;
+                            else if (n===4) gain2=rg2['4']||0;
+                            else if (n===3) gain2=rg2['3']||0;
+                            else if (n===2) gain2=rg2['2']||0;
+                            if (gain2 > 0) {
+                                const communs2 = tirage.nums2.filter(x => grille.includes(x));
+                                lignesGagnantes.push({ date, grille: idx+1, nums: grille, chance: CHANCES[idx], communs: communs2, gain: gain2, tirage: '2nd' });
+                            }
+                        });
+                    }
                 }
 
                 if (lignesGagnantes.length === 0) {
@@ -909,6 +925,7 @@
                         <div class="flex-1 min-w-0">
                             <div class="flex items-center gap-2 mb-1">
                                 <span class="text-yellow-300 font-bold">Grille ${l.grille}</span>
+                                <span style="background:${l.tirage==='2nd'?'#047857':'#1d4ed8'};color:white;padding:1px 6px;border-radius:4px;font-size:11px;">${l.tirage} tirage</span>
                                 <span class="text-gray-400 text-xs">${l.date}</span>
                             </div>
                             <div class="text-xs text-gray-400 mb-2">${l.nums.join('-')} + <span class="text-yellow-500">C${l.chance}</span></div>

@@ -330,10 +330,14 @@ app.get('/api/test', (req, res) => {
 });
 
 app.get('/api/force-scrape', async (req, res) => {
-  tirageCache=null; cacheExpiry=null;
-  const tirage = await scraperTirage();
+  console.log('[ADMIN] Force scraping + recalcul complet');
+  // Vider complètement les données et recharger depuis GitHub
+  tirageCache = null;
+  cacheExpiry = null;
+  await chargerDonnees(); // Recharger les données propres depuis GitHub
+  const tirage = await scraperTirage(); // Rescraper les numéros et montants
   if (!tirage) return res.json({ success:false, error:lastError });
-  res.json({ success:true, tirage, timestamp:new Date().toISOString() });
+  res.json({ success:true, tirage, message:'Cache vidé, données rechargées. Rechargez la page accueil pour recalculer.', timestamp:new Date().toISOString() });
 });
 
 const PORT = process.env.PORT || 3000;
