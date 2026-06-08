@@ -159,18 +159,22 @@ function parseMontants1er(html) {
 
 function parseMontants2nd(html) {
   const rg = {};
-  const idx = html.indexOf('tabpanel-1');
+  // Chercher le vrai tableau du 2nd tirage avec son titre exact
+  let idx = html.indexOf('Gains pour le 2nd tirage');
+  if (idx < 0) idx = html.indexOf('2nd tirage Loto');
+  if (idx < 0) idx = html.indexOf('tabpanel-1');
   if (idx < 0) return rg;
-  const bloc = html.substring(idx, idx+8000);
+  // Prendre 2000 chars après ce marqueur — uniquement le tableau du 2nd tirage
+  const bloc = html.substring(idx, idx + 2000);
   const rangs = [
-    {k:'5',p:/5 bons[\s\S]{0,300}?LotoMessage[^>]*>([\d\s]+,\d{2})&nbsp;&euro;/},
-    {k:'4',p:/4 bons[\s\S]{0,300}?LotoMessage[^>]*>([\d\s]+,\d{2})&nbsp;&euro;/},
-    {k:'3',p:/3 bons[\s\S]{0,300}?LotoMessage[^>]*>([\d\s]+,\d{2})&nbsp;&euro;/},
-    {k:'2',p:/2 bons[\s\S]{0,300}?LotoMessage[^>]*>([\d\s]+,\d{2})&nbsp;&euro;/},
+    {k:'5', p:/5 bons[^€]{0,200}?([\d\s]+,\d{2})\s*€/},
+    {k:'4', p:/4 bons[^€]{0,200}?([\d\s]+,\d{2})\s*€/},
+    {k:'3', p:/3 bons[^€]{0,200}?([\d\s]+,\d{2})\s*€/},
+    {k:'2', p:/2 bons[^€]{0,200}?([\d\s]+,\d{2})\s*€/},
   ];
   for (const r of rangs) {
     const m = r.p.exec(bloc);
-    rg[r.k] = (m&&m[1]) ? parseFloat(m[1].replace(/\s/g,'').replace(',','.')) : 0;
+    rg[r.k] = (m && m[1]) ? parseFloat(m[1].replace(/\s/g,'').replace(',','.')) : 0;
   }
   console.log('[SCRAPE] 2nd montants: 5='+rg['5']+'€ 4='+rg['4']+'€ 3='+rg['3']+'€ 2='+rg['2']+'€');
   return rg;
