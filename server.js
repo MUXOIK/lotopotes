@@ -421,8 +421,40 @@ app.get('/api/stats', (req, res) => {
   res.json({success:true,tiragesEffectues:allTirages.length,gainsTotal:gt.toFixed(2),roi:gt>0?((gt/2340)*100).toFixed(1)+'%':'0.0%',cagnotte:cagnotte.toFixed(2),historique:allTirages.slice(-10),timestamp:new Date().toISOString()});
 });
 
-app.get('/api/test', (req, res) => {
-  res.json({message:'OK',cache:{valide:cacheValide(),expire:cacheExpiry,tirage:tirageCache?tirageCache.nums:null},github:{token:!!GITHUB_TOKEN,sha:dataFileSha},timestamp:new Date().toISOString()});
+app.get('/api/debug-html', async (req, res) => {
+  const main = await httpGet('www.secretsdujeu.com', '/page/jeux_loto_resultats.html');
+  if (!main.ok) return res.json({ok:false, error:'Erreur page principale'});
+  
+  const urlM = /"url":"(https:\/\/www\.secretsdujeu\.com\/loto\/resultat\/tirage-loto-du-[^"]+)"/.exec(main.data);
+  if (!urlM) return res.json({ok:false, error:'URL détail non trouvée'});
+  
+  const detail = await httpGet('www.secretsdujeu.com', urlM[1].replace('https://www.secretsdujeu.com',''));
+  if (!detail.ok) return res.json({ok:false, error:'Erreur page détail'});
+  
+  const html = detail.data;
+  
+  // Extraire les sections pertinentes
+  const tableauMatch = html.match(/<table[^>]*>[\s\S]*?<\/table>/i);
+  const gainsSection = html.match(/(?:montants|gains|rapport)[^<]*<[\s\S]*?(?:tableau|table)[^<]*[\s\S]{0,2000}/i);
+  
+  // Chercher les patterns clés
+  const montantPatterns = html.match(/[\d\s,.']+(?:\s*(?:€|EUR|euros?)|(?=\s*<))/gi) || [];
+  const bonsPatterns = html.match(/\d\s*(?:bons?|bon)\b[^\n]{0,100}/gi) || [];
+  
+  res.json({
+    ok: true,
+    url: urlM[1],
+    htmlLength: html.length,
+    hasTable: /<table/i.test(html),
+    hasTr: /<tr/i.test(html),
+    hasDiv: /<div[^>]*loto/i.test(html),
+    hasBons: /\d\s*(?:bons?|bon)\b/i.test(html),
+    hasEuro: /€|&euro;|EUR/.test(html),
+    montantPatterns: montantPatterns.slice(0, 20),
+    bonsPatterns: bonsPatterns.slice(0, 20),
+    tableauSnippet: tableauMatch ? tableauMatch[0].substring(0, 1000) : null,
+    gainsSectionSnippet: gainsSection ? gainsSection[0].substring(0, 500) : null
+  });
 });
 
 app.get('/api/force-scrape', async (req, res) => {
