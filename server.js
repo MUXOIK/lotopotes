@@ -403,11 +403,70 @@ app.get('/api/test', (req, res) => {
 });
 
 app.get('/api/force-scrape', async (req, res) => {
-  tirageCache=null; cacheExpiry=null;
-  await chargerDonnees();
-  const tirage = await scraper();
-  if (!tirage) return res.json({success:false,error:lastError});
-  res.json({success:true,tirage,message:'Rechargez Accueil pour recalculer.',timestamp:new Date().toISOString()});
+  console.log('[FORCE-SCRAPE] Démarrage du scraping forcé...');
+  tirageCache = null;
+  cacheExpiry = null;
+  
+  // Scraper SANS réhydrater les anciennes données
+  const mainResp = await httpGet('www.secretsdujeu.com', '/page/jeux_loto_resultats.html');
+  if (!mainResp.ok || mainResp.status !== 200) {
+    lastError = 'Erreur page principale';
+    console.log('[FORCE-SCRAPE] ❌ Erreur page principale');
+    return res.json({success:false,error:lastError});
+  }
+  
+  const html = mainResp.data;
+  
+  let date = null;
+  const dm = /"dateModified":"(\d{4}-\d{2}-\d{2})/.exec(html);
+  if (dm) { date = dm[1]+'T20:50:00.000Z'; }
+  else {
+    const now = new Date(), day = now.getDay(), jours = [1,3,6];
+    let db = 0;
+    for (let i = 0; i <= 7; i++) { if (jours.includes(((day-i)+7)%7)) { db = i; break; } }
+    const last = new Date(now); last.setDate(now.getDate()-db);
+    if (db === 0 && now.getHours() < 21) {
+      for (let i = 1; i <= 7; i++) {
+        if (jours.includes(((day-i)+7)%7)) { last.setDate(now.getDate()-i); break; }
+      }
+    }
+    last.setHours(20, 50, 0, 0);
+    date = last.toISOString();
+  }
+  
+  const m = /combinaison gagnante[^0-9]*(\d+)-(\d+)-(\d+)-(\d+)-(\d+)[^0-9]*num.ro Chance est le (\d+)/.exec(html);
+  if (!m) {
+    lastError = 'Numéros non trouvés';
+    console.log('[FORCE-SCRAPE] ❌ Numéros non trouvés');
+    return res.json({success:false,error:lastError});
+  }
+  
+  const nums = [1,2,3,4,5].map(i => parseInt(m[i]));
+  const chance = parseInt(m[6]);
+  console.log('[FORCE-SCRAPE] 1er: '+nums.join(',')+'  Chance: '+chance);
+  
+  const urlM = /"url":"(https:\/\/www\.secretsdujeu\.com\/loto\/resultat\/tirage-loto-du-[^"]+)"/.exec(html);
+  let rg1 = {'5+1':0,'5':100000,'4+1':1000,'4':500,'3+1':50,'3':20,'2+1':9,'2':4,'1+1':2.20};
+  let rg2 = {}, nums2 = [];
+  
+  if (urlM) {
+    const detail = await httpGet('www.secretsdujeu.com', urlM[1].replace('https://www.secretsdujeu.com',''));
+    if (detail.ok && detail.status === 200) {
+      rg1 = parseMontants1er(detail.data);
+      rg2 = parseMontants2nd(detail.data);
+      const p2 = /class=["\']loto-numero second-tir["\'][^>]*>\s*(\d{1,2})\s*<\/p>/g;
+      let mm;
+      while ((mm = p2.exec(detail.data)) !== null) nums2.push(parseInt(mm[1]));
+      if (nums2.length > 0) console.log('[FORCE-SCRAPE] 2nd: '+nums2.join(','));
+      console.log('[FORCE-SCRAPE] 1er montants: 5='+rg1['5']+'€ 4='+rg1['4']+'€');
+      console.log('[FORCE-SCRAPE] 2nd montants: 5='+rg2['5']+'€ 4='+rg2['4']+'€ 3='+rg2['3']+'€ 2='+rg2['2']+'€');
+    }
+  }
+  
+  const tirage = {nums, chance, nums2, date, rapportGains: rg1, rapportGains2: rg2};
+  console.log('[FORCE-SCRAPE] ✅ Scraping forcé réussi');
+  
+  res.json({success:true, tirage, message:'Rechargez Accueil pour recalculer.', timestamp:new Date().toISOString()});
 });
 
 const PORT = process.env.PORT || 3000;
