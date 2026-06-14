@@ -186,9 +186,12 @@ function extraireLignesGenerique(html) {
     const avecChance = /chance/i.test(segment);
     let montant = null;
     
-    const montantMatch = /([\d\s]+,\d{1,2})\s*€/.exec(segment);
+    // Cherche montant avec ou sans € symbol
+    const montantMatch = /([\d\s,.']+?)(?:\s*(?:€|EUR|euros?|$))/i.exec(segment);
     if (montantMatch) {
-      montant = parseFloat(montantMatch[1].replace(/\s/g, '').replace(',', '.'));
+      const num = montantMatch[1].replace(/\s/g, '').replace(',', '.');
+      montant = parseFloat(num);
+      if (isNaN(montant)) montant = null;
     } else if (/\/|pas de gagnant/i.test(segment)) {
       montant = 0;
     }
@@ -201,8 +204,14 @@ function extraireLignesGenerique(html) {
 
 function parseMontantCellule(texte) {
   if (texte === '/' || /pas de gagnant/i.test(texte)) return 0;
-  const m = /([\d\s]+,\d{1,2})/.exec(texte);
-  return m ? parseFloat(m[1].replace(/\s/g,'').replace(',','.')) : null;
+  // Pattern flexible : accepte montants avec ou sans €, avec virgule ou point
+  const m = /([\d\s,.']+?)(?:\s*(?:€|EUR|euros?|$))/i.exec(texte);
+  if (m) {
+    const num = m[1].replace(/\s/g,'').replace(',','.');
+    const parsed = parseFloat(num);
+    return isNaN(parsed) ? null : parsed;
+  }
+  return null;
 }
 
 function analyserLignesGains(html) {
