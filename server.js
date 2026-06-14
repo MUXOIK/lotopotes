@@ -403,16 +403,18 @@ app.get('/api/test', (req, res) => {
 });
 
 app.get('/api/force-scrape', async (req, res) => {
-  console.log('[FORCE-SCRAPE] Démarrage du scraping forcé...');
+  const logs = [];
+  logs.push('[FORCE-SCRAPE] Démarrage du scraping forcé...');
+  
   tirageCache = null;
   cacheExpiry = null;
   
-  // Scraper SANS réhydrater les anciennes données
   const mainResp = await httpGet('www.secretsdujeu.com', '/page/jeux_loto_resultats.html');
   if (!mainResp.ok || mainResp.status !== 200) {
     lastError = 'Erreur page principale';
-    console.log('[FORCE-SCRAPE] ❌ Erreur page principale');
-    return res.json({success:false,error:lastError});
+    logs.push('[FORCE-SCRAPE] ❌ Erreur page principale');
+    console.log(logs.join('\n'));
+    return res.json({success:false,error:lastError,logs});
   }
   
   const html = mainResp.data;
@@ -437,13 +439,14 @@ app.get('/api/force-scrape', async (req, res) => {
   const m = /combinaison gagnante[^0-9]*(\d+)-(\d+)-(\d+)-(\d+)-(\d+)[^0-9]*num.ro Chance est le (\d+)/.exec(html);
   if (!m) {
     lastError = 'Numéros non trouvés';
-    console.log('[FORCE-SCRAPE] ❌ Numéros non trouvés');
-    return res.json({success:false,error:lastError});
+    logs.push('[FORCE-SCRAPE] ❌ Numéros non trouvés');
+    console.log(logs.join('\n'));
+    return res.json({success:false,error:lastError,logs});
   }
   
   const nums = [1,2,3,4,5].map(i => parseInt(m[i]));
   const chance = parseInt(m[6]);
-  console.log('[FORCE-SCRAPE] 1er: '+nums.join(',')+'  Chance: '+chance);
+  logs.push('[FORCE-SCRAPE] 1er: '+nums.join(',')+'  Chance: '+chance);
   
   const urlM = /"url":"(https:\/\/www\.secretsdujeu\.com\/loto\/resultat\/tirage-loto-du-[^"]+)"/.exec(html);
   let rg1 = {'5+1':0,'5':100000,'4+1':1000,'4':500,'3+1':50,'3':20,'2+1':9,'2':4,'1+1':2.20};
@@ -457,16 +460,17 @@ app.get('/api/force-scrape', async (req, res) => {
       const p2 = /class=["\']loto-numero second-tir["\'][^>]*>\s*(\d{1,2})\s*<\/p>/g;
       let mm;
       while ((mm = p2.exec(detail.data)) !== null) nums2.push(parseInt(mm[1]));
-      if (nums2.length > 0) console.log('[FORCE-SCRAPE] 2nd: '+nums2.join(','));
-      console.log('[FORCE-SCRAPE] 1er montants: 5='+rg1['5']+'€ 4='+rg1['4']+'€');
-      console.log('[FORCE-SCRAPE] 2nd montants: 5='+rg2['5']+'€ 4='+rg2['4']+'€ 3='+rg2['3']+'€ 2='+rg2['2']+'€');
+      if (nums2.length > 0) logs.push('[FORCE-SCRAPE] 2nd: '+nums2.join(','));
+      logs.push('[FORCE-SCRAPE] 1er montants: 5='+rg1['5']+'€ 4='+rg1['4']+'€ 3='+rg1['3']+'€');
+      logs.push('[FORCE-SCRAPE] 2nd montants: 5='+rg2['5']+'€ 4='+rg2['4']+'€ 3='+rg2['3']+'€ 2='+rg2['2']+'€');
     }
   }
   
   const tirage = {nums, chance, nums2, date, rapportGains: rg1, rapportGains2: rg2};
-  console.log('[FORCE-SCRAPE] ✅ Scraping forcé réussi');
+  logs.push('[FORCE-SCRAPE] ✅ Scraping forcé réussi');
   
-  res.json({success:true, tirage, message:'Rechargez Accueil pour recalculer.', timestamp:new Date().toISOString()});
+  console.log(logs.join('\n'));
+  res.json({success:true, tirage, logs, message:'Rechargez Accueil pour recalculer.', timestamp:new Date().toISOString()});
 });
 
 const PORT = process.env.PORT || 3000;
