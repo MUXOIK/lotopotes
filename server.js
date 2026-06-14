@@ -21,7 +21,6 @@ function sameNums(a, b) {
   return [...a].sort((x,y)=>x-y).join(',') === [...b].sort((x,y)=>x-y).join(',');
 }
 
-
 function githubRequest(method, path, body) {
   return new Promise((resolve) => {
     const payload = body ? JSON.stringify(body) : null;
@@ -167,10 +166,9 @@ function httpGet(hostname, path) {
   });
 }
 
-// Extrait les lignes <tr> d'un tableau HTML, chaque ligne étant un tableau
-// de cellules <td> nettoyées (texte brut, sans balises ni entités HTML).
-// Cette approche évite toute ambiguïté entre le contenu réel d'une cellule
-// (ex: "/" pour "pas de gagnant") et les caractères des balises HTML (</td>, </tr>...).
+// ===== PARSING GÉNÉRALISTE : gère <tr><td> classique ET structures <div> =====
+
+// Étape 1 : essayer d'extraire les lignes en format <tr><td> classique
 function extraireLignesTableau(html) {
   const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
   const lignes = [];
@@ -181,7 +179,7 @@ function extraireLignesTableau(html) {
     let td;
     while ((td = tdRegex.exec(tr[1])) !== null) {
       const texte = td[1]
-        .replace(/<[^>]+>/g, '')      // retirer toutes les balises internes
+        .replace(/<[^>]+>/g, '')
         .replace(/&nbsp;/g, ' ')
         .replace(/&euro;/g, '€')
         .replace(/\s+/g, ' ')
@@ -193,25 +191,65 @@ function extraireLignesTableau(html) {
   return lignes;
 }
 
+// Étape 2 : fallback généraliste pour structures <div> ou mixtes
+// Découpe le HTML autour de chaque occurrence de "X bons", puis extrait les cellules
+function extraireLignesGenerique(html) {
+  const bonRegex = /(\d)\s*(?:bons?|bon)\b/i;
+  const celluleRegex = /<\/(?:td|div|span|li|p)>/gi;
+  
+  // Trouver tous les segments qui commencent par "X bons"
+  const segments = [];
+  const bonMatches = [...html.matchAll(/(\d)\s*(?:bons?|bon)\b[^<]*(?:<[^>]+>[^<]*)*(?:<\/(?:td|div|span|li|p)>)?/gi)];
+  
+  for (const match of bonMatches) {
+    const segment = match[0];
+    const bonsNum = parseInt(match[1]);
+    
+    // Chercher si le segment contient "Chance"
+    const avecChance = /chance/i.test(segment);
+    
+    // Extraire le montant : chercher un pattern "XX,XX€" ou "/" ou "Pas de gagnant"
+    let montant = null;
+    
+    // Chercher un montant en euros
+    const montantMatch = /([\d\s]+,\d{1,2})\s*€/.exec(segment);
+    if (montantMatch) {
+      montant = parseFloat(montantMatch[1].replace(/\s/g, '').replace(',', '.'));
+    } else if (/\/|pas de gagnant/i.test(segment)) {
+      montant = 0;
+    }
+    
+    segments.push({ bons: bonsNum, avecChance, montant });
+  }
+  
+  return segments;
+}
+
 function parseMontantCellule(texte) {
   if (texte === '/' || /pas de gagnant/i.test(texte)) return 0;
   const m = /([\d\s]+,\d{1,2})/.exec(texte);
   return m ? parseFloat(m[1].replace(/\s/g,'').replace(',','.')) : null;
 }
 
-// Analyse structurelle commune: pour chaque ligne du tableau de gains,
-// extrait le rang ("X bons"), la présence de "Chance", et le montant associé.
-// Utilisé à la fois pour le rapport du 1er tirage (9 rangs, avec/sans Chance)
-// et celui du 2nd tirage (4 rangs, jamais de Chance).
+// Analyse structurelle commune : combine <tr><td> classique + fallback généraliste
 function analyserLignesGains(html) {
-  const lignes = extraireLignesTableau(html);
-  return lignes.map(cellules => {
+  // Étape 1 : essayer le parsing classique <tr><td>
+  let lignes = extraireLignesTableau(html);
+  
+  // Étape 2 : si aucune ligne trouvée, utiliser le fallback généraliste
+  if (lignes.length === 0) {
+    console.log('[SCRAPE] ⚠️ Aucune ligne <tr><td> trouvée, essai du fallback généraliste...');
+    const resultatGenerique = extraireLignesGenerique(html);
+    return resultatGenerique;
+  }
+  
+  // Parsing standard pour <tr><td>
+  const analysees = lignes.map(cellules => {
     const labelCell = cellules.find(c => /\d\s*(?:bons?|bon)\b/i.test(c));
     if (!labelCell) return null;
     const bonsMatch = /(\d)\s*(?:bons?|bon)\b/i.exec(labelCell);
     const bons = parseInt(bonsMatch[1]);
     const avecChance = /chance/i.test(labelCell);
-    // Le montant est dans la dernière cellule contenant € ou "/" ou "Pas de gagnant"
     let montantCell = null;
     for (let i = cellules.length - 1; i >= 0; i--) {
       if (/€/.test(cellules[i]) || cellules[i] === '/' || /pas de gagnant/i.test(cellules[i])) {
@@ -222,18 +260,16 @@ function analyserLignesGains(html) {
     const montant = montantCell !== null ? parseMontantCellule(montantCell) : null;
     return { bons, avecChance, montant };
   }).filter(Boolean);
+  
+  return analysees;
 }
 
 // Parse le rapport de gains du 1er tirage (9 rangs: 5+1,5,4+1,4,3+1,3,2+1,2,1+1)
-// en se basant sur la structure des lignes plutôt que sur des libellés exacts.
 function parseMontants1er(html) {
   const analysees = analyserLignesGains(html);
   const rg = {};
   const ordreAttendu = ['5+1','5','4+1','4','3+1','3','2+1','2','1+1'];
 
-  // Le bloc du 1er tirage est délimité par la dernière ligne contenant "Chance"
-  // (rang "1+1" = "1 bon + Chance"). Tout ce qui précède (et inclut) cette ligne
-  // appartient au 1er tirage; le 2nd tirage (sans Chance) vient après.
   let dernierIdxAvecChance = -1;
   analysees.forEach((l, i) => { if (l.avecChance) dernierIdxAvecChance = i; });
 
@@ -243,22 +279,16 @@ function parseMontants1er(html) {
       rg[ordreAttendu[i]] = l.montant !== null ? l.montant : 0;
     }
   });
-  // Compléter les clés manquantes
   for (const k of ordreAttendu) if (rg[k] === undefined) rg[k] = 0;
   console.log('[SCRAPE] 1er montants: 5='+rg['5']+'€ 1+1='+rg['1+1']+'€');
   return rg;
 }
 
-// Parse le rapport de gains du 2nd tirage en analysant la structure du tableau
-// (lignes/cellules) plutôt qu'un libellé de titre, qui peut varier selon
-// l'actualité du tirage (jackpot remporté, gros gain au 2nd tirage, etc.)
+// Parse le rapport de gains du 2nd tirage (4 rangs: 5,4,3,2 bons)
+// Avec DEBUG : afficher le contenu analysé avant de retourner
 function parseMontants2nd(html) {
   const analysees = analyserLignesGains(html);
 
-  // Le tableau du 1er tirage comporte 9 rangs, dont 5 "avec Chance".
-  // Le tableau du 2nd tirage (4 rangs: 5,4,3,2 bons) n'a jamais "Chance".
-  // On repère donc la dernière ligne "avec Chance" : tout ce qui suit,
-  // parmi les lignes sans Chance, appartient au 2nd tirage.
   let dernierIdxAvecChance = -1;
   analysees.forEach((l, i) => { if (l.avecChance) dernierIdxAvecChance = i; });
 
@@ -270,14 +300,17 @@ function parseMontants2nd(html) {
   });
   for (const k of ['5','4','3','2']) if (rg[k] === undefined) rg[k] = 0;
 
+  // ===== DEBUG : afficher exactement ce qui a été analysé =====
+  console.log('[DEBUG] Analyse lignes 2nd tirage:', JSON.stringify(analysees, null, 2));
   console.log('[SCRAPE] 2nd montants: 5='+rg['5']+'€ 4='+rg['4']+'€ 3='+rg['3']+'€ 2='+rg['2']+'€');
 
   if (Object.values(rg).every(v => v === 0)) {
-    console.log('[SCRAPE] ⚠️ rapportGains2 entièrement à 0 — vérifier la structure du tableau (lignes détectées: '+analysees.length+')');
+    console.log('[SCRAPE] ⚠️ rapportGains2 entièrement à 0 — vérifier la structure du tableau (lignes analysées: '+analysees.length+')');
   }
 
   return rg;
 }
+
 // Re-scraper la page de détail pour une date donnée (utilisé par la migration)
 const JOURS_FR = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
 const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
