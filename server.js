@@ -206,10 +206,21 @@ function parseMontantCellule(texte) {
 }
 
 function analyserLignesGains(html) {
+  console.log('[DEBUG] ===== EXTRACTION TABLEAU =====');
   let lignes = extraireLignesTableau(html);
+  console.log('[DEBUG] lignes trouvées par extraireLignesTableau:', lignes.length);
+  
+  if (lignes.length > 0) {
+    lignes.slice(0, 20).forEach((l, i) => {
+      console.log('[DEBUG] ligne', i, JSON.stringify(l));
+    });
+  }
   
   if (lignes.length === 0) {
-    return extraireLignesGenerique(html);
+    console.log('[DEBUG] ===== FALLBACK GÉNÉRIQUE =====');
+    const analysees = extraireLignesGenerique(html);
+    console.log('[DEBUG] analysees générique:', JSON.stringify(analysees, null, 2));
+    return analysees;
   }
   
   const analysees = lignes.map(cellules => {
@@ -228,6 +239,9 @@ function analyserLignesGains(html) {
     const montant = montantCell !== null ? parseMontantCellule(montantCell) : null;
     return { bons, avecChance, montant };
   }).filter(Boolean);
+  
+  console.log('[DEBUG] ===== ANALYSÉES TABLEAU =====');
+  console.log('[DEBUG] analysees:', JSON.stringify(analysees, null, 2));
   
   return analysees;
 }
@@ -455,6 +469,19 @@ app.get('/api/force-scrape', async (req, res) => {
   if (urlM) {
     const detail = await httpGet('www.secretsdujeu.com', urlM[1].replace('https://www.secretsdujeu.com',''));
     if (detail.ok && detail.status === 200) {
+      // Diagnostiquer le parsing
+      const analysees = analyserLignesGains(detail.data);
+      logs.push('[DEBUG] analyserLignesGains retourne '+analysees.length+' lignes');
+      if (analysees.length > 0) {
+        logs.push('[DEBUG] Échantillon: '+JSON.stringify(analysees.slice(0, 3)));
+      } else {
+        const hasTr = /<tr/.test(detail.data);
+        const hasDiv = /<div[^>]*loto/.test(detail.data);
+        const hasBons = /\d\s*(?:bons?|bon)\b/i.test(detail.data);
+        const hasEuro = /€/.test(detail.data);
+        logs.push('[DEBUG] HTML: tr='+hasTr+' div='+hasDiv+' bons='+hasBons+' euro='+hasEuro);
+      }
+      
       rg1 = parseMontants1er(detail.data);
       rg2 = parseMontants2nd(detail.data);
       const p2 = /class=["\']loto-numero second-tir["\'][^>]*>\s*(\d{1,2})\s*<\/p>/g;
@@ -467,7 +494,55 @@ app.get('/api/force-scrape', async (req, res) => {
   }
   
   const tirage = {nums, chance, nums2, date, rapportGains: rg1, rapportGains2: rg2};
-  logs.push('[FORCE-SCRAPE] ✅ Scraping forcé réussi');
+  
+  // Mettre à jour le cache
+  tirageCache = tirage;
+  cacheExpiry = prochainTirage();
+  
+  // Calculer les gains
+  const { total, incoherent } = calculerGainsTirage(tirage);
+  
+  // Trouver s'il existe déjà
+  const existantIndex = allTirages.findIndex(t =>
+    t.date.split('T')[0] === tirage.date.split('T')[0] &&
+    sameNums(t.nums, tirage.nums) &&
+    sameNums(t.nums2, tirage.nums2)
+  );
+  
+  if (existantIndex >= 0) {
+    const ancienGain = allTirages[existantIndex].gains || 0;
+    cagnotte = cagnotte - ancienGain + total;
+    
+    allTirages[existantIndex] = {
+      nums: tirage.nums,
+      chance: tirage.chance,
+      nums2: tirage.nums2,
+      gains: total,
+      rapportGains: tirage.rapportGains,
+      rapportGains2: tirage.rapportGains2,
+      dataIncomplete: incoherent,
+      date: tirage.date
+    };
+    
+    logs.push('[FORCE-SCRAPE] Historique mis à jour : ancien gain '+ancienGain.toFixed(2)+'€ → '+total.toFixed(2)+'€');
+  } else {
+    cagnotte += total;
+    allTirages.push({
+      nums: tirage.nums,
+      chance: tirage.chance,
+      nums2: tirage.nums2,
+      gains: total,
+      rapportGains: tirage.rapportGains,
+      rapportGains2: tirage.rapportGains2,
+      dataIncomplete: incoherent,
+      date: tirage.date
+    });
+    
+    logs.push('[FORCE-SCRAPE] Nouveau tirage ajouté : '+total.toFixed(2)+'€');
+  }
+  
+  await sauvegarder();
+  logs.push('[FORCE-SCRAPE] ✅ Scraping forcé réussi et sauvegardé');
   
   console.log(logs.join('\n'));
   res.json({success:true, tirage, logs, message:'Rechargez Accueil pour recalculer.', timestamp:new Date().toISOString()});
