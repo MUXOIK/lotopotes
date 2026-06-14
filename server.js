@@ -15,6 +15,13 @@ let allTirages = [], distribution = {}, cagnotte = 0, lastError = '';
 let tirageCache = null, cacheExpiry = null, dataFileSha = null;
 PARTICIPANTS.forEach(p => { distribution[p] = {gains:0,solde:-180}; });
 
+// Compare deux tableaux de numéros indépendamment de l'ordre
+function sameNums(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  return [...a].sort((x,y)=>x-y).join(',') === [...b].sort((x,y)=>x-y).join(',');
+}
+
+
 function githubRequest(method, path, body) {
   return new Promise((resolve) => {
     const payload = body ? JSON.stringify(body) : null;
@@ -42,6 +49,8 @@ function calculerGainsTirage(t) {
   const rg2 = t.rapportGains2 || {};
   const a2 = t.nums2 && t.nums2.length === 5 && Object.values(rg2).some(v=>v>0);
   let total = 0;
+  let incoherent = false;
+
   GRILLES.forEach((g,i) => {
     const n = t.nums.filter(x=>g.includes(x)).length, c = CHANCES[i]===t.chance;
     let g1 = 0;
@@ -51,14 +60,22 @@ function calculerGainsTirage(t) {
     else if (n===2&&c) g1=rg['2+1']||0; else if (n===2) g1=rg['2']||0;
     else if (c) g1=rg['1+1']||0;
     let g2 = 0;
-    if (a2) {
+    if (t.nums2 && t.nums2.length === 5) {
       const n2 = t.nums2.filter(x=>g.includes(x)).length;
-      if (n2===5) g2=rg2['5']||0; else if (n2===4) g2=rg2['4']||0;
-      else if (n2===3) g2=rg2['3']||0; else if (n2===2) g2=rg2['2']||0;
+      if (a2) {
+        if (n2===5) g2=rg2['5']||0; else if (n2===4) g2=rg2['4']||0;
+        else if (n2===3) g2=rg2['3']||0; else if (n2===2) g2=rg2['2']||0;
+      }
+      // ALERTE: si 2+ numéros matchent au 2nd tirage mais rapportGains2 est vide/incomplet
+      if (n2 >= 2 && !a2) {
+        incoherent = true;
+        console.log('[ALERTE] Grille '+(i+1)+' a '+n2+' numéros au 2nd tirage du '+t.date.split('T')[0]+' mais rapportGains2 est vide — gain potentiellement non comptabilisé !');
+      }
     }
     total += g1 + g2;
   });
-  return total;
+
+  return { total, incoherent };
 }
 
 async function sauvegarder() {
@@ -89,7 +106,20 @@ async function chargerDonnees() {
       let nouvelleCagnotte = 0;
       for (let i=0; i<allTirages.length; i++) {
         if (!allTirages[i].rapportGains2) { allTirages[i].rapportGains2 = {}; needSave = true; }
-        const bonGain = calculerGainsTirage(allTirages[i]);
+
+        // Si rapportGains2 est entièrement à 0 et que nums2 existe, retenter le scraping
+        const rg2vide = Object.values(allTirages[i].rapportGains2).length === 0
+          || Object.values(allTirages[i].rapportGains2).every(v => v === 0);
+        if (rg2vide && allTirages[i].nums2 && allTirages[i].nums2.length === 5) {
+          const retry = await rescraperDate(allTirages[i].date);
+          if (retry) {
+            if (retry.rapportGains2) { allTirages[i].rapportGains2 = retry.rapportGains2; needSave = true; }
+            if (retry.rapportGains) { allTirages[i].rapportGains = retry.rapportGains; needSave = true; }
+          }
+        }
+
+        const { total: bonGain, incoherent } = calculerGainsTirage(allTirages[i]);
+        allTirages[i].dataIncomplete = incoherent;
         if (Math.abs(bonGain - allTirages[i].gains) > 0.01) {
           console.log('[MIGRATION] Tirage '+allTirages[i].date.split('T')[0]+': '+allTirages[i].gains+'€ → '+bonGain+'€');
           allTirages[i].gains = bonGain;
@@ -137,47 +167,150 @@ function httpGet(hostname, path) {
   });
 }
 
-function parseMontants1er(html) {
-  const rg = {};
-  const rangs = [
-    {k:'5+1',p:/5 bons N[^<]*Chance[\s\S]{0,300}?LotoMessage[^>]*>(Pas de gagnant|[\d\s]+,\d{2})&nbsp;&euro;/},
-    {k:'5',  p:/5 bons N[°º](?!.*Chance)[\s\S]{0,300}?LotoMessage[^>]*>([\d\s]+,\d{2})&nbsp;&euro;/},
-    {k:'4+1',p:/4 bons N[^<]*Chance[\s\S]{0,300}?LotoMessage[^>]*>([\d\s]+,\d{2})&nbsp;&euro;/},
-    {k:'4',  p:/4 bons N[°º](?!.*Chance)[\s\S]{0,300}?LotoMessage[^>]*>([\d\s]+,\d{2})&nbsp;&euro;/},
-    {k:'3+1',p:/3 bons N[^<]*Chance[\s\S]{0,300}?LotoMessage[^>]*>([\d\s]+,\d{2})&nbsp;&euro;/},
-    {k:'3',  p:/3 bons N[°º](?!.*Chance)[\s\S]{0,300}?LotoMessage[^>]*>([\d\s]+,\d{2})&nbsp;&euro;/},
-    {k:'2+1',p:/2 bons N[^<]*Chance[\s\S]{0,300}?LotoMessage[^>]*>([\d\s]+,\d{2})&nbsp;&euro;/},
-    {k:'2',  p:/2 bons N[°º](?!.*Chance)[\s\S]{0,300}?LotoMessage[^>]*>([\d\s]+,\d{2})&nbsp;&euro;/},
-    {k:'1+1',p:/(?:1 bon|0 ou 1)[^<]*Chance[\s\S]{0,300}?LotoMessage[^>]*>([\d\s]+,\d{2})&nbsp;&euro;/},
-  ];
-  for (const r of rangs) {
-    const m = r.p.exec(html);
-    rg[r.k] = (m&&m[1]&&m[1]!=='Pas de gagnant') ? parseFloat(m[1].replace(/\s/g,'').replace(',','.')) : 0;
+// Extrait les lignes <tr> d'un tableau HTML, chaque ligne étant un tableau
+// de cellules <td> nettoyées (texte brut, sans balises ni entités HTML).
+// Cette approche évite toute ambiguïté entre le contenu réel d'une cellule
+// (ex: "/" pour "pas de gagnant") et les caractères des balises HTML (</td>, </tr>...).
+function extraireLignesTableau(html) {
+  const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  const lignes = [];
+  let tr;
+  while ((tr = trRegex.exec(html)) !== null) {
+    const tdRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+    const cellules = [];
+    let td;
+    while ((td = tdRegex.exec(tr[1])) !== null) {
+      const texte = td[1]
+        .replace(/<[^>]+>/g, '')      // retirer toutes les balises internes
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&euro;/g, '€')
+        .replace(/\s+/g, ' ')
+        .trim();
+      cellules.push(texte);
+    }
+    if (cellules.length > 0) lignes.push(cellules);
   }
+  return lignes;
+}
+
+function parseMontantCellule(texte) {
+  if (texte === '/' || /pas de gagnant/i.test(texte)) return 0;
+  const m = /([\d\s]+,\d{1,2})/.exec(texte);
+  return m ? parseFloat(m[1].replace(/\s/g,'').replace(',','.')) : null;
+}
+
+// Analyse structurelle commune: pour chaque ligne du tableau de gains,
+// extrait le rang ("X bons"), la présence de "Chance", et le montant associé.
+// Utilisé à la fois pour le rapport du 1er tirage (9 rangs, avec/sans Chance)
+// et celui du 2nd tirage (4 rangs, jamais de Chance).
+function analyserLignesGains(html) {
+  const lignes = extraireLignesTableau(html);
+  return lignes.map(cellules => {
+    const labelCell = cellules.find(c => /\d\s*(?:bons?|bon)\b/i.test(c));
+    if (!labelCell) return null;
+    const bonsMatch = /(\d)\s*(?:bons?|bon)\b/i.exec(labelCell);
+    const bons = parseInt(bonsMatch[1]);
+    const avecChance = /chance/i.test(labelCell);
+    // Le montant est dans la dernière cellule contenant € ou "/" ou "Pas de gagnant"
+    let montantCell = null;
+    for (let i = cellules.length - 1; i >= 0; i--) {
+      if (/€/.test(cellules[i]) || cellules[i] === '/' || /pas de gagnant/i.test(cellules[i])) {
+        montantCell = cellules[i];
+        break;
+      }
+    }
+    const montant = montantCell !== null ? parseMontantCellule(montantCell) : null;
+    return { bons, avecChance, montant };
+  }).filter(Boolean);
+}
+
+// Parse le rapport de gains du 1er tirage (9 rangs: 5+1,5,4+1,4,3+1,3,2+1,2,1+1)
+// en se basant sur la structure des lignes plutôt que sur des libellés exacts.
+function parseMontants1er(html) {
+  const analysees = analyserLignesGains(html);
+  const rg = {};
+  const ordreAttendu = ['5+1','5','4+1','4','3+1','3','2+1','2','1+1'];
+
+  // Le bloc du 1er tirage est délimité par la dernière ligne contenant "Chance"
+  // (rang "1+1" = "1 bon + Chance"). Tout ce qui précède (et inclut) cette ligne
+  // appartient au 1er tirage; le 2nd tirage (sans Chance) vient après.
+  let dernierIdxAvecChance = -1;
+  analysees.forEach((l, i) => { if (l.avecChance) dernierIdxAvecChance = i; });
+
+  const premierBloc = analysees.slice(0, dernierIdxAvecChance + 1);
+  premierBloc.forEach((l, i) => {
+    if (i < ordreAttendu.length) {
+      rg[ordreAttendu[i]] = l.montant !== null ? l.montant : 0;
+    }
+  });
+  // Compléter les clés manquantes
+  for (const k of ordreAttendu) if (rg[k] === undefined) rg[k] = 0;
+  console.log('[SCRAPE] 1er montants: 5='+rg['5']+'€ 1+1='+rg['1+1']+'€');
   return rg;
 }
 
+// Parse le rapport de gains du 2nd tirage en analysant la structure du tableau
+// (lignes/cellules) plutôt qu'un libellé de titre, qui peut varier selon
+// l'actualité du tirage (jackpot remporté, gros gain au 2nd tirage, etc.)
 function parseMontants2nd(html) {
+  const analysees = analyserLignesGains(html);
+
+  // Le tableau du 1er tirage comporte 9 rangs, dont 5 "avec Chance".
+  // Le tableau du 2nd tirage (4 rangs: 5,4,3,2 bons) n'a jamais "Chance".
+  // On repère donc la dernière ligne "avec Chance" : tout ce qui suit,
+  // parmi les lignes sans Chance, appartient au 2nd tirage.
+  let dernierIdxAvecChance = -1;
+  analysees.forEach((l, i) => { if (l.avecChance) dernierIdxAvecChance = i; });
+
   const rg = {};
-  // Chercher le vrai tableau du 2nd tirage avec son titre exact
-  let idx = html.indexOf('Gains pour le 2nd tirage');
-  if (idx < 0) idx = html.indexOf('2nd tirage Loto');
-  if (idx < 0) idx = html.indexOf('tabpanel-1');
-  if (idx < 0) return rg;
-  // Prendre 2000 chars après ce marqueur — uniquement le tableau du 2nd tirage
-  const bloc = html.substring(idx, idx + 2000);
-  const rangs = [
-    {k:'5', p:/5 bons[^€]{0,200}?([\d\s]+,\d{2})\s*€/},
-    {k:'4', p:/4 bons[^€]{0,200}?([\d\s]+,\d{2})\s*€/},
-    {k:'3', p:/3 bons[^€]{0,200}?([\d\s]+,\d{2})\s*€/},
-    {k:'2', p:/2 bons[^€]{0,200}?([\d\s]+,\d{2})\s*€/},
-  ];
-  for (const r of rangs) {
-    const m = r.p.exec(bloc);
-    rg[r.k] = (m && m[1]) ? parseFloat(m[1].replace(/\s/g,'').replace(',','.')) : 0;
-  }
+  analysees.forEach((l, i) => {
+    if (!l.avecChance && i > dernierIdxAvecChance && [2,3,4,5].includes(l.bons)) {
+      if (rg[String(l.bons)] === undefined) rg[String(l.bons)] = l.montant !== null ? l.montant : 0;
+    }
+  });
+  for (const k of ['5','4','3','2']) if (rg[k] === undefined) rg[k] = 0;
+
   console.log('[SCRAPE] 2nd montants: 5='+rg['5']+'€ 4='+rg['4']+'€ 3='+rg['3']+'€ 2='+rg['2']+'€');
+
+  if (Object.values(rg).every(v => v === 0)) {
+    console.log('[SCRAPE] ⚠️ rapportGains2 entièrement à 0 — vérifier la structure du tableau (lignes détectées: '+analysees.length+')');
+  }
+
   return rg;
+}
+// Re-scraper la page de détail pour une date donnée (utilisé par la migration)
+const JOURS_FR = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+
+async function rescraperDate(dateISO) {
+  const d = new Date(dateISO);
+  const jour = JOURS_FR[d.getUTCDay()];
+  const num = d.getUTCDate();
+  const mois = MOIS_FR[d.getUTCMonth()];
+  const annee = d.getUTCFullYear();
+  const path = `/loto/resultat/tirage-loto-du-${jour}-${num}-${mois}-${annee}`;
+  console.log('[MIGRATION] Tentative rescraping: ' + path);
+  const detail = await httpGet('www.secretsdujeu.com', path);
+  if (!detail.ok || detail.status !== 200) {
+    console.log('[MIGRATION] ❌ Page introuvable: ' + path + ' (status ' + detail.status + ')');
+    return null;
+  }
+  const rg1 = parseMontants1er(detail.data);
+  const rg2 = parseMontants2nd(detail.data);
+  const result = {};
+  if (Object.values(rg1).some(v => v > 0)) {
+    result.rapportGains = rg1;
+    console.log('[MIGRATION] ✅ rapportGains récupéré pour ' + dateISO.split('T')[0]);
+  }
+  if (Object.values(rg2).some(v => v > 0)) {
+    result.rapportGains2 = rg2;
+    console.log('[MIGRATION] ✅ rapportGains2 récupéré pour ' + dateISO.split('T')[0]);
+  }
+  if (Object.keys(result).length === 0) {
+    console.log('[MIGRATION] ❌ Toujours rien après rescraping pour ' + dateISO.split('T')[0]);
+    return null;
+  }
+  return result;
 }
 
 async function scraper() {
@@ -225,7 +358,6 @@ async function scraper() {
 
   // Réhydrater depuis allTirages si le tirage existe déjà en base (source de vérité)
   const dateStr = date.split('T')[0];
-  const sameNums = (a,b) => a && b && [...a].sort((x,y)=>x-y).join(',') === [...b].sort((x,y)=>x-y).join(',');
   const existant = allTirages.find(t =>
     t.date.split('T')[0] === dateStr &&
     sameNums(t.nums, nums) &&
@@ -249,7 +381,11 @@ async function getTirage() {
 }
 
 function dejàEnregistré(t) {
-  return allTirages.some(x=>x.nums.join(',')===t.nums.join(',')&&x.date.split('T')[0]===t.date.split('T')[0]);
+  return allTirages.some(x =>
+    x.date.split('T')[0] === t.date.split('T')[0] &&
+    sameNums(x.nums, t.nums) &&
+    sameNums(x.nums2, t.nums2)
+  );
 }
 
 app.get('/api/loto-complet', async (req, res) => {
@@ -261,8 +397,8 @@ app.get('/api/loto-complet', async (req, res) => {
       return res.json({success:true,tirage,cagnotte:'0.00',distribution,historique:[],timestamp:new Date().toISOString()});
     }
     if (!dejàEnregistré(tirage)) {
-      const total = calculerGainsTirage(tirage);
-      console.log('[LOG] Total: '+total+'€');
+      const { total, incoherent } = calculerGainsTirage(tirage);
+      console.log('[LOG] Total: '+total+'€' + (incoherent ? ' ⚠️ INCOMPLET' : ''));
       cagnotte += total;
       if (cagnotte>=650) {
         const pp=650/13;
@@ -270,10 +406,12 @@ app.get('/api/loto-complet', async (req, res) => {
         cagnotte-=650;
         console.log('[LOG] DISTRIBUTION!');
       }
-      allTirages.push({nums:tirage.nums,chance:tirage.chance,nums2:tirage.nums2,gains:total,rapportGains:tirage.rapportGains,rapportGains2:tirage.rapportGains2,date:tirage.date});
+      allTirages.push({nums:tirage.nums,chance:tirage.chance,nums2:tirage.nums2,gains:total,rapportGains:tirage.rapportGains,rapportGains2:tirage.rapportGains2,dataIncomplete:incoherent,date:tirage.date});
       await sauvegarder();
     }
-    res.json({success:true,tirage,cagnotte:cagnotte.toFixed(2),distribution,historique:allTirages.slice(-10),timestamp:new Date().toISOString()});
+    // Indiquer si le tirage courant a des données incomplètes (calculé à la volée pour le cache)
+    const checkActuel = calculerGainsTirage(tirage);
+    res.json({success:true,tirage,tirageDataIncomplete:checkActuel.incoherent,cagnotte:cagnotte.toFixed(2),distribution,historique:allTirages.slice(-10),timestamp:new Date().toISOString()});
   } catch(e) { res.status(500).json({success:false,error:e.message}); }
 });
 
