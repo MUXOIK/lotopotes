@@ -15,7 +15,6 @@ let allTirages = [], distribution = {}, cagnotte = 0, lastError = '';
 let tirageCache = null, cacheExpiry = null, dataFileSha = null;
 PARTICIPANTS.forEach(p => { distribution[p] = {gains:0,solde:-180}; });
 
-// Compare deux tableaux de numéros indépendamment de l'ordre
 function sameNums(a, b) {
   if (!a || !b || a.length !== b.length) return false;
   return [...a].sort((x,y)=>x-y).join(',') === [...b].sort((x,y)=>x-y).join(',');
@@ -65,10 +64,9 @@ function calculerGainsTirage(t) {
         if (n2===5) g2=rg2['5']||0; else if (n2===4) g2=rg2['4']||0;
         else if (n2===3) g2=rg2['3']||0; else if (n2===2) g2=rg2['2']||0;
       }
-      // ALERTE: si 2+ numéros matchent au 2nd tirage mais rapportGains2 est vide/incomplet
       if (n2 >= 2 && !a2) {
         incoherent = true;
-        console.log('[ALERTE] Grille '+(i+1)+' a '+n2+' numéros au 2nd tirage du '+t.date.split('T')[0]+' mais rapportGains2 est vide — gain potentiellement non comptabilisé !');
+        console.log('[ALERTE] Grille '+(i+1)+' a '+n2+' numéros au 2nd tirage du '+t.date.split('T')[0]+' mais rapportGains2 vide');
       }
     }
     total += g1 + g2;
@@ -84,7 +82,7 @@ async function sauvegarder() {
     const res = await githubRequest('PUT','data.json',{message:'data '+new Date().toISOString().split('T')[0],content,...(dataFileSha?{sha:dataFileSha}:{})});
     if (res.ok) { dataFileSha = res.data.content.sha; console.log('[DB] ✅ Sauvegardé'); }
     else console.log('[DB] Erreur: '+JSON.stringify(res.data).substring(0,200));
-  } catch(e) { console.log('[DB] Erreur save: '+e.message); }
+  } catch(e) { console.log('[DB] Erreur: '+e.message); }
 }
 
 async function chargerDonnees() {
@@ -98,17 +96,12 @@ async function chargerDonnees() {
       cagnotte = d.cagnotte || 0;
       dataFileSha = res.data.sha;
       PARTICIPANTS.forEach(p => { if (!distribution[p]) distribution[p]={gains:0,solde:-180}; });
-      console.log('[DB] Chargé: '+allTirages.length+' tirages, cagnotte='+cagnotte+'€');
+      console.log('[DB] Chargé: '+allTirages.length+' tirages');
 
-      // MIGRATION: recalculer les gains si rapportGains2 manquant ou gains incorrect
-      let needSave = false;
-      let nouvelleCagnotte = 0;
+      let needSave = false, nouvelleCagnotte = 0;
       for (let i=0; i<allTirages.length; i++) {
         if (!allTirages[i].rapportGains2) { allTirages[i].rapportGains2 = {}; needSave = true; }
-
-        // Si rapportGains2 est entièrement à 0 et que nums2 existe, retenter le scraping
-        const rg2vide = Object.values(allTirages[i].rapportGains2).length === 0
-          || Object.values(allTirages[i].rapportGains2).every(v => v === 0);
+        const rg2vide = Object.values(allTirages[i].rapportGains2).length === 0 || Object.values(allTirages[i].rapportGains2).every(v => v === 0);
         if (rg2vide && allTirages[i].nums2 && allTirages[i].nums2.length === 5) {
           const retry = await rescraperDate(allTirages[i].date);
           if (retry) {
@@ -116,7 +109,6 @@ async function chargerDonnees() {
             if (retry.rapportGains) { allTirages[i].rapportGains = retry.rapportGains; needSave = true; }
           }
         }
-
         const { total: bonGain, incoherent } = calculerGainsTirage(allTirages[i]);
         allTirages[i].dataIncomplete = incoherent;
         if (Math.abs(bonGain - allTirages[i].gains) > 0.01) {
@@ -131,10 +123,9 @@ async function chargerDonnees() {
         cagnotte = nouvelleCagnotte;
         needSave = true;
       }
-      if (needSave) { console.log('[MIGRATION] Sauvegarde...'); await sauvegarder(); }
+      if (needSave) await sauvegarder();
     } else {
       PARTICIPANTS.forEach(p=>{distribution[p]={gains:0,solde:-180};});
-      console.log('[DB] Fichier vide');
     }
   } catch(e) {
     PARTICIPANTS.forEach(p=>{distribution[p]={gains:0,solde:-180};});
@@ -166,9 +157,8 @@ function httpGet(hostname, path) {
   });
 }
 
-// ===== PARSING GÉNÉRALISTE : gère <tr><td> classique ET structures <div> =====
+// ===== PARSING GÉNÉRALISTE =====
 
-// Étape 1 : essayer d'extraire les lignes en format <tr><td> classique
 function extraireLignesTableau(html) {
   const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
   const lignes = [];
@@ -178,12 +168,7 @@ function extraireLignesTableau(html) {
     const cellules = [];
     let td;
     while ((td = tdRegex.exec(tr[1])) !== null) {
-      const texte = td[1]
-        .replace(/<[^>]+>/g, '')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&euro;/g, '€')
-        .replace(/\s+/g, ' ')
-        .trim();
+      const texte = td[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&euro;/g, '€').replace(/\s+/g, ' ').trim();
       cellules.push(texte);
     }
     if (cellules.length > 0) lignes.push(cellules);
@@ -191,27 +176,16 @@ function extraireLignesTableau(html) {
   return lignes;
 }
 
-// Étape 2 : fallback généraliste pour structures <div> ou mixtes
-// Découpe le HTML autour de chaque occurrence de "X bons", puis extrait les cellules
 function extraireLignesGenerique(html) {
-  const bonRegex = /(\d)\s*(?:bons?|bon)\b/i;
-  const celluleRegex = /<\/(?:td|div|span|li|p)>/gi;
-  
-  // Trouver tous les segments qui commencent par "X bons"
   const segments = [];
   const bonMatches = [...html.matchAll(/(\d)\s*(?:bons?|bon)\b[^<]*(?:<[^>]+>[^<]*)*(?:<\/(?:td|div|span|li|p)>)?/gi)];
   
   for (const match of bonMatches) {
     const segment = match[0];
     const bonsNum = parseInt(match[1]);
-    
-    // Chercher si le segment contient "Chance"
     const avecChance = /chance/i.test(segment);
-    
-    // Extraire le montant : chercher un pattern "XX,XX€" ou "/" ou "Pas de gagnant"
     let montant = null;
     
-    // Chercher un montant en euros
     const montantMatch = /([\d\s]+,\d{1,2})\s*€/.exec(segment);
     if (montantMatch) {
       montant = parseFloat(montantMatch[1].replace(/\s/g, '').replace(',', '.'));
@@ -231,19 +205,13 @@ function parseMontantCellule(texte) {
   return m ? parseFloat(m[1].replace(/\s/g,'').replace(',','.')) : null;
 }
 
-// Analyse structurelle commune : combine <tr><td> classique + fallback généraliste
 function analyserLignesGains(html) {
-  // Étape 1 : essayer le parsing classique <tr><td>
   let lignes = extraireLignesTableau(html);
   
-  // Étape 2 : si aucune ligne trouvée, utiliser le fallback généraliste
   if (lignes.length === 0) {
-    console.log('[SCRAPE] ⚠️ Aucune ligne <tr><td> trouvée, essai du fallback généraliste...');
-    const resultatGenerique = extraireLignesGenerique(html);
-    return resultatGenerique;
+    return extraireLignesGenerique(html);
   }
   
-  // Parsing standard pour <tr><td>
   const analysees = lignes.map(cellules => {
     const labelCell = cellules.find(c => /\d\s*(?:bons?|bon)\b/i.test(c));
     if (!labelCell) return null;
@@ -264,7 +232,6 @@ function analyserLignesGains(html) {
   return analysees;
 }
 
-// Parse le rapport de gains du 1er tirage (9 rangs: 5+1,5,4+1,4,3+1,3,2+1,2,1+1)
 function parseMontants1er(html) {
   const analysees = analyserLignesGains(html);
   const rg = {};
@@ -280,12 +247,9 @@ function parseMontants1er(html) {
     }
   });
   for (const k of ordreAttendu) if (rg[k] === undefined) rg[k] = 0;
-  console.log('[SCRAPE] 1er montants: 5='+rg['5']+'€ 1+1='+rg['1+1']+'€');
   return rg;
 }
 
-// Parse le rapport de gains du 2nd tirage (4 rangs: 5,4,3,2 bons)
-// Avec DEBUG : afficher le contenu analysé avant de retourner
 function parseMontants2nd(html) {
   const analysees = analyserLignesGains(html);
 
@@ -300,18 +264,9 @@ function parseMontants2nd(html) {
   });
   for (const k of ['5','4','3','2']) if (rg[k] === undefined) rg[k] = 0;
 
-  // ===== DEBUG : afficher exactement ce qui a été analysé =====
-  console.log('[DEBUG] Analyse lignes 2nd tirage:', JSON.stringify(analysees, null, 2));
-  console.log('[SCRAPE] 2nd montants: 5='+rg['5']+'€ 4='+rg['4']+'€ 3='+rg['3']+'€ 2='+rg['2']+'€');
-
-  if (Object.values(rg).every(v => v === 0)) {
-    console.log('[SCRAPE] ⚠️ rapportGains2 entièrement à 0 — vérifier la structure du tableau (lignes analysées: '+analysees.length+')');
-  }
-
   return rg;
 }
 
-// Re-scraper la page de détail pour une date donnée (utilisé par la migration)
 const JOURS_FR = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
 const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
 
@@ -322,28 +277,15 @@ async function rescraperDate(dateISO) {
   const mois = MOIS_FR[d.getUTCMonth()];
   const annee = d.getUTCFullYear();
   const path = `/loto/resultat/tirage-loto-du-${jour}-${num}-${mois}-${annee}`;
-  console.log('[MIGRATION] Tentative rescraping: ' + path);
   const detail = await httpGet('www.secretsdujeu.com', path);
-  if (!detail.ok || detail.status !== 200) {
-    console.log('[MIGRATION] ❌ Page introuvable: ' + path + ' (status ' + detail.status + ')');
-    return null;
-  }
+  if (!detail.ok || detail.status !== 200) return null;
+  
   const rg1 = parseMontants1er(detail.data);
   const rg2 = parseMontants2nd(detail.data);
   const result = {};
-  if (Object.values(rg1).some(v => v > 0)) {
-    result.rapportGains = rg1;
-    console.log('[MIGRATION] ✅ rapportGains récupéré pour ' + dateISO.split('T')[0]);
-  }
-  if (Object.values(rg2).some(v => v > 0)) {
-    result.rapportGains2 = rg2;
-    console.log('[MIGRATION] ✅ rapportGains2 récupéré pour ' + dateISO.split('T')[0]);
-  }
-  if (Object.keys(result).length === 0) {
-    console.log('[MIGRATION] ❌ Toujours rien après rescraping pour ' + dateISO.split('T')[0]);
-    return null;
-  }
-  return result;
+  if (Object.values(rg1).some(v => v > 0)) result.rapportGains = rg1;
+  if (Object.values(rg2).some(v => v > 0)) result.rapportGains2 = rg2;
+  return Object.keys(result).length > 0 ? result : null;
 }
 
 async function scraper() {
@@ -368,7 +310,7 @@ async function scraper() {
   if (!m) { lastError='Numéros non trouvés'; return null; }
   const nums = [1,2,3,4,5].map(i=>parseInt(m[i]));
   const chance = parseInt(m[6]);
-  console.log('[SCRAPE] 1er: '+nums.join(',')+'  Chance:'+chance);
+  console.log('[SCRAPE] 1er: '+nums.join(',')+'  Chance: '+chance);
 
   const urlM = /"url":"(https:\/\/www\.secretsdujeu\.com\/loto\/resultat\/tirage-loto-du-[^"]+)"/.exec(html);
   let rg1 = {'5+1':0,'5':100000,'4+1':1000,'4':500,'3+1':50,'3':20,'2+1':9,'2':4,'1+1':2.20};
@@ -382,14 +324,12 @@ async function scraper() {
       const p2 = /class=["\']loto-numero second-tir["\'][^>]*>\s*(\d{1,2})\s*<\/p>/g;
       let mm;
       while ((mm=p2.exec(detail.data))!==null) nums2.push(parseInt(mm[1]));
-      console.log('[SCRAPE] 2nd nums: '+nums2.join(','));
-      console.log('[SCRAPE] 1er montants: 5='+rg1['5']+'€ 1+1='+rg1['1+1']+'€');
+      if (nums2.length > 0) console.log('[SCRAPE] 2nd: '+nums2.join(','));
     }
   }
 
   tirageCache = {nums, chance, nums2, date, rapportGains: rg1, rapportGains2: rg2};
 
-  // Réhydrater depuis allTirages si le tirage existe déjà en base (source de vérité)
   const dateStr = date.split('T')[0];
   const existant = allTirages.find(t =>
     t.date.split('T')[0] === dateStr &&
@@ -400,16 +340,15 @@ async function scraper() {
     if (existant.rapportGains) tirageCache.rapportGains = existant.rapportGains;
     if (existant.rapportGains2) tirageCache.rapportGains2 = existant.rapportGains2;
     if (existant.nums2?.length) tirageCache.nums2 = existant.nums2;
-    console.log('[SCRAPE] Réhydraté depuis data.json');
   }
 
   cacheExpiry = prochainTirage();
-  console.log('[SCRAPE] ✅ Cache→'+cacheExpiry);
+  console.log('[SCRAPE] ✅ Tirage '+dateStr);
   return tirageCache;
 }
 
 async function getTirage() {
-  if (cacheValide()) { console.log('[CACHE] Hit'); return tirageCache; }
+  if (cacheValide()) return tirageCache;
   return await scraper();
 }
 
@@ -431,18 +370,17 @@ app.get('/api/loto-complet', async (req, res) => {
     }
     if (!dejàEnregistré(tirage)) {
       const { total, incoherent } = calculerGainsTirage(tirage);
-      console.log('[LOG] Total: '+total+'€' + (incoherent ? ' ⚠️ INCOMPLET' : ''));
+      console.log('[LOG] Gains: '+total+'€' + (incoherent ? ' ⚠️' : ''));
       cagnotte += total;
       if (cagnotte>=650) {
         const pp=650/13;
         PARTICIPANTS.forEach(p=>{distribution[p].gains+=pp;distribution[p].solde+=pp;});
         cagnotte-=650;
-        console.log('[LOG] DISTRIBUTION!');
+        console.log('[LOG] Distribution 650€ effectuée');
       }
       allTirages.push({nums:tirage.nums,chance:tirage.chance,nums2:tirage.nums2,gains:total,rapportGains:tirage.rapportGains,rapportGains2:tirage.rapportGains2,dataIncomplete:incoherent,date:tirage.date});
       await sauvegarder();
     }
-    // Indiquer si le tirage courant a des données incomplètes (calculé à la volée pour le cache)
     const checkActuel = calculerGainsTirage(tirage);
     res.json({success:true,tirage,tirageDataIncomplete:checkActuel.incoherent,cagnotte:cagnotte.toFixed(2),distribution,historique:allTirages.slice(-10),timestamp:new Date().toISOString()});
   } catch(e) { res.status(500).json({success:false,error:e.message}); }
