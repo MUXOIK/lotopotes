@@ -160,17 +160,31 @@ function httpGet(hostname, path) {
 // ===== PARSING GÉNÉRALISTE =====
 
 function extraireLignesTableau(html) {
+  // Décoder les entités HTML
+  const decoded = html
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&euro;/g, '€')
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&');
+  
   const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
   const lignes = [];
   let tr;
-  while ((tr = trRegex.exec(html)) !== null) {
-    const tdRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+  while ((tr = trRegex.exec(decoded)) !== null) {
     const cellules = [];
-    let td;
-    while ((td = tdRegex.exec(tr[1])) !== null) {
-      const texte = td[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&euro;/g, '€').replace(/\s+/g, ' ').trim();
+    
+    // Extraire TOUTES les cellules : <td> ET <th>
+    const cellRegex = /<(?:td|th)[^>]*>([\s\S]*?)<\/(?:td|th)>/gi;
+    let cell;
+    while ((cell = cellRegex.exec(tr[1])) !== null) {
+      // Nettoyer : retirer les tags, extra whitespace, trim
+      const texte = cell[1]
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
       cellules.push(texte);
     }
+    
     if (cellules.length > 0) lignes.push(cellules);
   }
   return lignes;
