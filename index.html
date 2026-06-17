@@ -641,7 +641,7 @@
     </div>
 
     <script>
-        const BACKEND_URL = 'https://lotopotes.onrender.com';
+        const BACKEND_URL = 'https://lotopotes-1.onrender.com';
 
         function showSection(sectionId) {
             document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
@@ -902,7 +902,7 @@
                         else if (n<=1&&c) gain=rg['1+1']||0;
                         if (gain > 0) {
                             const communs = tirage.nums.filter(x => grille.includes(x));
-                            lignesGagnantes.push({ date, grille: idx+1, nums: grille, chance: CHANCES[idx], communs, gain, tirage: '1er' });
+                            lignesGagnantes.push({ date, grille: idx+1, nums: grille, chance: CHANCES[idx], communs, chanceGagnant: c, gain, tirage: '1er' });
                         }
                     });
 
@@ -917,7 +917,7 @@
                             else if (n===2) gain2=rg2['2']||0;
                             if (gain2 > 0) {
                                 const communs2 = tirage.nums2.filter(x => grille.includes(x));
-                                lignesGagnantes.push({ date, grille: idx+1, nums: grille, chance: CHANCES[idx], communs: communs2, gain: gain2, tirage: '2nd' });
+                                lignesGagnantes.push({ date, grille: idx+1, nums: grille, chance: CHANCES[idx], communs: communs2, chanceGagnant: false, gain: gain2, tirage: '2nd' });
                             }
                         });
                     }
@@ -946,9 +946,12 @@
                                 <span style="background:${l.tirage==='2nd'?'#047857':'#1d4ed8'};color:white;padding:1px 6px;border-radius:4px;font-size:11px;">${l.tirage} tirage</span>
                                 <span class="text-gray-400 text-xs">${l.date}</span>
                             </div>
-                            <div class="text-xs text-gray-400 mb-2">${l.nums.join('-')} + <span class="text-yellow-500">C${l.chance}</span></div>
+                            <div class="text-xs text-gray-400 mb-2">
+                                ${l.nums.join('-')} + <span style="color:#fbbf24;font-weight:bold;">C${l.chance}</span>
+                            </div>
                             <div class="flex flex-wrap gap-1">
                                 ${l.communs.map(n => `<span style="background:#1d4ed8;color:white;padding:2px 6px;border-radius:4px;font-size:12px;">${n}</span>`).join('')}
+                                ${l.chanceGagnant ? `<span style="background:#fbbf24;color:#1f2937;padding:2px 6px;border-radius:4px;font-size:12px;font-weight:bold;">C${l.chance}</span>` : ''}
                             </div>
                         </div>
                         <div class="text-green-300 font-bold text-lg whitespace-nowrap">${l.gain.toFixed(2)}€</div>
