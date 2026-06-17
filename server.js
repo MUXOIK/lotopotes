@@ -7,46 +7,12 @@ app.use(cors());
 const GRILLES = [[7,12,23,34,45],[6,15,28,39,48],[3,18,31,42,49],[8,19,32,41,46],[5,22,29,35,44]];
 const CHANCES = [9,6,4,1,7];
 const PARTICIPANTS = ['ANOUFA Fabienne & Moïse','BELLALOU Martine & Patrick','GRINAL Danielle & Serge','HOCHBERG Nathalie & Bruno','JURIS Virgine & Frédéric','KIMAN Laurence & Didier','LEVIN Gabrielle & Didier','MESGUICH Corinne & Jean Philippe','OIKNINE Muriel & Aaron','PARTOUCHE Sylvie & Serge','SITBON Leslie & OHAYON Gilles','TEMAN Eva & FINKELSTEIN Philippe','WEITZMANN Dalia & Jacques'];
-const DEBUT = new Date('2026-06-01T00:00:00.000Z');
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_REPO = process.env.GITHUB_REPO || 'MUXOIK/lotopotes';
 
-let allTirages = [], distribution = {}, cagnotte = 0, lastError = '';
+let allTirages = [], distribution = {}, cagnotte = 0;
 let tirageCache = null, cacheExpiry = null, dataFileSha = null;
-const fs = require('fs');
-const path = require('path');
-const CACHE_FILE = path.join(process.cwd(), 'cache.json');
 PARTICIPANTS.forEach(p => { distribution[p] = {gains:0,solde:-180}; });
-
-function sauvegarderCache() {
-  if (!tirageCache || !cacheExpiry) return;
-  try {
-    const data = {tirage: tirageCache, expiry: cacheExpiry.toISOString()};
-    fs.writeFileSync(CACHE_FILE, JSON.stringify(data, null, 2));
-    console.log('[CACHE] Sauvegardé dans '+CACHE_FILE);
-  } catch(e) { console.log('[CACHE] Erreur sauvegarde: '+e.message); }
-}
-
-function chargerCache() {
-  try {
-    if (!fs.existsSync(CACHE_FILE)) return false;
-    const data = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
-    if (!data.tirage || !data.expiry) return false;
-    const expiry = new Date(data.expiry);
-    if (new Date() > expiry) {
-      console.log('[CACHE] Expiré, suppression');
-      fs.unlinkSync(CACHE_FILE);
-      return false;
-    }
-    tirageCache = data.tirage;
-    cacheExpiry = expiry;
-    console.log('[CACHE] Chargé depuis fichier, expire '+expiry.toISOString());
-    return true;
-  } catch(e) {
-    console.log('[CACHE] Erreur chargement: '+e.message);
-    return false;
-  }
-}
 
 function sameNums(a, b) {
   if (!a || !b || a.length !== b.length) return false;
@@ -80,32 +46,31 @@ function calculerGainsTirage(t) {
   const rg2 = t.rapportGains2 || {};
   const a2 = t.nums2 && t.nums2.length === 5 && Object.values(rg2).some(v=>v>0);
   let total = 0;
-  let incoherent = false;
-
-  GRILLES.forEach((g,i) => {
-    const n = t.nums.filter(x=>g.includes(x)).length, c = CHANCES[i]===t.chance;
-    let g1 = 0;
-    if (n===5&&c) g1=rg['5+1']||0; else if (n===5) g1=rg['5']||0;
-    else if (n===4&&c) g1=rg['4+1']||0; else if (n===4) g1=rg['4']||0;
-    else if (n===3&&c) g1=rg['3+1']||0; else if (n===3) g1=rg['3']||0;
-    else if (n===2&&c) g1=rg['2+1']||0; else if (n===2) g1=rg['2']||0;
-    else if (c) g1=rg['1+1']||0;
-    let g2 = 0;
-    if (t.nums2 && t.nums2.length === 5) {
-      const n2 = t.nums2.filter(x=>g.includes(x)).length;
-      if (a2) {
-        if (n2===5) g2=rg2['5']||0; else if (n2===4) g2=rg2['4']||0;
-        else if (n2===3) g2=rg2['3']||0; else if (n2===2) g2=rg2['2']||0;
-      }
-      if (n2 >= 2 && !a2) {
-        incoherent = true;
-        console.log('[ALERTE] Grille '+(i+1)+' a '+n2+' numéros au 2nd tirage du '+t.date.split('T')[0]+' mais rapportGains2 vide');
-      }
+  for (let i = 0; i < GRILLES.length; i++) {
+    const n = t.nums.filter(x => GRILLES[i].includes(x)).length;
+    const c = (CHANCES[i] === t.chance);
+    let g = 0;
+    if (n===5&&c) g=rg['5+1']||0;
+    else if (n===5) g=rg['5']||0;
+    else if (n===4&&c) g=rg['4+1']||0;
+    else if (n===4) g=rg['4']||0;
+    else if (n===3&&c) g=rg['3+1']||0;
+    else if (n===3) g=rg['3']||0;
+    else if (n===2&&c) g=rg['2+1']||0;
+    else if (n===2) g=rg['2']||0;
+    else if (n<=1&&c) g=rg['1+1']||0;
+    total += g;
+    if (a2 && rg2) {
+      const n2 = t.nums2.filter(x => GRILLES[i].includes(x)).length;
+      let g2 = 0;
+      if (n2===5) g2=rg2['5']||0;
+      else if (n2===4) g2=rg2['4']||0;
+      else if (n2===3) g2=rg2['3']||0;
+      else if (n2===2) g2=rg2['2']||0;
+      total += g2;
     }
-    total += g1 + g2;
-  });
-
-  return { total, incoherent };
+  }
+  return total;
 }
 
 async function sauvegarder() {
@@ -114,12 +79,16 @@ async function sauvegarder() {
     const content = Buffer.from(JSON.stringify({allTirages,distribution,cagnotte,updatedAt:new Date().toISOString()},null,2)).toString('base64');
     const res = await githubRequest('PUT','data.json',{message:'data '+new Date().toISOString().split('T')[0],content,...(dataFileSha?{sha:dataFileSha}:{})});
     if (res.ok) { dataFileSha = res.data.content.sha; console.log('[DB] ✅ Sauvegardé'); }
-    else console.log('[DB] Erreur: '+JSON.stringify(res.data).substring(0,200));
-  } catch(e) { console.log('[DB] Erreur: '+e.message); }
+  } catch(e) { console.log('[DB] ❌ Erreur: '+e.message); }
 }
 
 async function chargerDonnees() {
-  if (!GITHUB_TOKEN) { PARTICIPANTS.forEach(p=>{distribution[p]={gains:0,solde:-180};}); return; }
+  console.log('[DB] Chargement depuis GitHub...');
+  if (!GITHUB_TOKEN) { 
+    console.log('[DB] ⚠️ GITHUB_TOKEN vide - données locales uniquement');
+    PARTICIPANTS.forEach(p=>{distribution[p]={gains:0,solde:-180};}); 
+    return; 
+  }
   try {
     const res = await githubRequest('GET','data.json');
     if (res.ok && res.data.content) {
@@ -129,60 +98,21 @@ async function chargerDonnees() {
       cagnotte = d.cagnotte || 0;
       dataFileSha = res.data.sha;
       PARTICIPANTS.forEach(p => { if (!distribution[p]) distribution[p]={gains:0,solde:-180}; });
-      console.log('[DB] Chargé: '+allTirages.length+' tirages');
-
-      let needSave = false, nouvelleCagnotte = 0;
-      for (let i=0; i<allTirages.length; i++) {
-        if (!allTirages[i].rapportGains2) { allTirages[i].rapportGains2 = {}; needSave = true; }
-        const rg2vide = Object.values(allTirages[i].rapportGains2).length === 0 || Object.values(allTirages[i].rapportGains2).every(v => v === 0);
-        if (rg2vide && allTirages[i].nums2 && allTirages[i].nums2.length === 5) {
-          const retry = await rescraperDate(allTirages[i].date);
-          if (retry) {
-            if (retry.rapportGains2) { allTirages[i].rapportGains2 = retry.rapportGains2; needSave = true; }
-            if (retry.rapportGains) { allTirages[i].rapportGains = retry.rapportGains; needSave = true; }
-          }
-        }
-        const { total: bonGain, incoherent } = calculerGainsTirage(allTirages[i]);
-        allTirages[i].dataIncomplete = incoherent;
-        if (Math.abs(bonGain - allTirages[i].gains) > 0.01) {
-          console.log('[MIGRATION] Tirage '+allTirages[i].date.split('T')[0]+': '+allTirages[i].gains+'€ → '+bonGain+'€');
-          allTirages[i].gains = bonGain;
-          needSave = true;
-        }
-        nouvelleCagnotte += allTirages[i].gains;
-      }
-      if (Math.abs(nouvelleCagnotte - cagnotte) > 0.01) {
-        console.log('[MIGRATION] Cagnotte: '+cagnotte+'€ → '+nouvelleCagnotte+'€');
-        cagnotte = nouvelleCagnotte;
-        needSave = true;
-      }
-      if (needSave) await sauvegarder();
+      console.log('[DB] ✅ Chargé: '+allTirages.length+' tirages, cagnotte '+cagnotte.toFixed(2)+'€');
     } else {
+      console.log('[DB] ❌ Erreur GitHub');
       PARTICIPANTS.forEach(p=>{distribution[p]={gains:0,solde:-180};});
     }
-  } catch(e) {
-    PARTICIPANTS.forEach(p=>{distribution[p]={gains:0,solde:-180};});
-    console.log('[DB] Erreur: '+e.message);
-  }
+  } catch(e) { console.log('[DB] ❌ Erreur: '+e.message); }
 }
 
-function prochainTirage() {
-  const now = new Date(), day = now.getDay(), jours = [1,3,6];
-  for (let i=0; i<=7; i++) {
-    const c = new Date(now); c.setDate(now.getDate()+i); c.setHours(21,0,0,0);
-    if (jours.includes(c.getDay()) && c > now) return c;
-  }
-}
-
-function cacheValide() { return tirageCache && cacheExpiry && new Date() < cacheExpiry; }
-
-function httpGet(hostname, path) {
+function httpGet(host, path) {
   return new Promise((resolve) => {
-    const options = {hostname,path,method:'GET',headers:{'User-Agent':'Mozilla/5.0 Chrome/120','Accept':'text/html','Accept-Language':'fr-FR','Cache-Control':'no-cache'},timeout:20000};
+    const options = {hostname:host,path,method:'GET',headers:{'User-Agent':'Mozilla/5.0'},timeout:15000};
     const req = https.request(options, (res) => {
       let data = '';
       res.on('data', c => { data += c; });
-      res.on('end', () => resolve({ok:true,data,status:res.statusCode}));
+      res.on('end', () => resolve({ok:true,status:res.statusCode,data}));
     });
     req.on('error', err => resolve({ok:false,error:err.message}));
     req.on('timeout', () => { req.destroy(); resolve({ok:false,error:'timeout'}); });
@@ -190,68 +120,26 @@ function httpGet(hostname, path) {
   });
 }
 
-// ===== PARSING GÉNÉRALISTE =====
-
 function extraireLignesTableau(html) {
-  // Décoder les entités HTML
-  const decoded = html
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&euro;/g, '€')
-    .replace(/&quot;/g, '"')
-    .replace(/&amp;/g, '&');
-  
+  const decoded = html.replace(/&nbsp;/g, ' ').replace(/&euro;/g, '€').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
   const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
   const lignes = [];
   let tr;
   while ((tr = trRegex.exec(decoded)) !== null) {
     const cellules = [];
-    
-    // Extraire TOUTES les cellules : <td> ET <th>
     const cellRegex = /<(?:td|th)[^>]*>([\s\S]*?)<\/(?:td|th)>/gi;
     let cell;
     while ((cell = cellRegex.exec(tr[1])) !== null) {
-      // Nettoyer : retirer les tags, extra whitespace, trim
-      const texte = cell[1]
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
+      const texte = cell[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
       cellules.push(texte);
     }
-    
     if (cellules.length > 0) lignes.push(cellules);
   }
   return lignes;
 }
 
-function extraireLignesGenerique(html) {
-  const segments = [];
-  const bonMatches = [...html.matchAll(/(\d)\s*(?:bons?|bon)\b[^<]*(?:<[^>]+>[^<]*)*(?:<\/(?:td|div|span|li|p)>)?/gi)];
-  
-  for (const match of bonMatches) {
-    const segment = match[0];
-    const bonsNum = parseInt(match[1]);
-    const avecChance = /chance/i.test(segment);
-    let montant = null;
-    
-    // Cherche montant avec ou sans € symbol
-    const montantMatch = /([\d\s,.']+?)(?:\s*(?:€|EUR|euros?|$))/i.exec(segment);
-    if (montantMatch) {
-      const num = montantMatch[1].replace(/\s/g, '').replace(',', '.');
-      montant = parseFloat(num);
-      if (isNaN(montant)) montant = null;
-    } else if (/\/|pas de gagnant/i.test(segment)) {
-      montant = 0;
-    }
-    
-    segments.push({ bons: bonsNum, avecChance, montant });
-  }
-  
-  return segments;
-}
-
 function parseMontantCellule(texte) {
   if (texte === '/' || /pas de gagnant/i.test(texte)) return 0;
-  // Pattern flexible : accepte montants avec ou sans €, avec virgule ou point
   const m = /([\d\s,.']+?)(?:\s*(?:€|EUR|euros?|$))/i.exec(texte);
   if (m) {
     const num = m[1].replace(/\s/g,'').replace(',','.');
@@ -261,274 +149,107 @@ function parseMontantCellule(texte) {
   return null;
 }
 
-function analyserLignesGains(html) {
-  console.log('[DEBUG] ===== EXTRACTION TABLEAU =====');
-  let lignes = extraireLignesTableau(html);
-  console.log('[DEBUG] lignes trouvées par extraireLignesTableau:', lignes.length);
-  
-  if (lignes.length > 0) {
-    lignes.slice(0, 20).forEach((l, i) => {
-      console.log('[DEBUG] ligne', i, JSON.stringify(l));
-    });
-  }
-  
-  if (lignes.length === 0) {
-    console.log('[DEBUG] ===== FALLBACK GÉNÉRIQUE =====');
-    const analysees = extraireLignesGenerique(html);
-    console.log('[DEBUG] analysees générique:', JSON.stringify(analysees, null, 2));
-    return analysees;
-  }
-  
-  const analysees = lignes.map(cellules => {
-    const labelCell = cellules.find(c => /\d\s*(?:bons?|bon)\b/i.test(c));
-    if (!labelCell) return null;
-    const bonsMatch = /(\d)\s*(?:bons?|bon)\b/i.exec(labelCell);
-    const bons = parseInt(bonsMatch[1]);
-    const avecChance = /chance/i.test(labelCell);
-    let montantCell = null;
-    for (let i = cellules.length - 1; i >= 0; i--) {
-      if (/€/.test(cellules[i]) || cellules[i] === '/' || /pas de gagnant/i.test(cellules[i])) {
-        montantCell = cellules[i];
-        break;
-      }
-    }
-    const montant = montantCell !== null ? parseMontantCellule(montantCell) : null;
-    return { bons, avecChance, montant };
-  }).filter(Boolean);
-  
-  console.log('[DEBUG] ===== ANALYSÉES TABLEAU =====');
-  console.log('[DEBUG] analysees:', JSON.stringify(analysees, null, 2));
-  
-  return analysees;
-}
-
 function parseMontants1er(html) {
-  const analysees = analyserLignesGains(html);
+  const lignes = extraireLignesTableau(html);
   const rg = {};
   const ordreAttendu = ['5+1','5','4+1','4','3+1','3','2+1','2','1+1'];
-
   let dernierIdxAvecChance = -1;
-  analysees.forEach((l, i) => { if (l.avecChance) dernierIdxAvecChance = i; });
-
-  const premierBloc = analysees.slice(0, dernierIdxAvecChance + 1);
-  premierBloc.forEach((l, i) => {
-    if (i < ordreAttendu.length) {
-      rg[ordreAttendu[i]] = l.montant !== null ? l.montant : 0;
+  for (let i = 0; i < lignes.length; i++) {
+    const cellText = lignes[i].join(' ');
+    if (/chance/i.test(cellText)) dernierIdxAvecChance = i;
+  }
+  for (let i = 0; i <= dernierIdxAvecChance && i < lignes.length; i++) {
+    const cells = lignes[i];
+    for (let j = 0; j < cells.length; j++) {
+      const m = /(\d)\s*(?:bons?|bon)\b/i.exec(cells[j]);
+      if (m) {
+        const bons = parseInt(m[1]);
+        const avecChance = /chance/i.test(cells[j]);
+        let montant = null;
+        for (let k = j + 1; k < cells.length; k++) {
+          if (/€|\/|pas de gagnant/i.test(cells[k])) {
+            montant = parseMontantCellule(cells[k]);
+            break;
+          }
+        }
+        const idx = i + (avecChance ? 1 : 0);
+        if (idx < ordreAttendu.length) {
+          rg[ordreAttendu[idx]] = montant !== null ? montant : 0;
+        }
+      }
     }
-  });
+  }
   for (const k of ordreAttendu) if (rg[k] === undefined) rg[k] = 0;
   return rg;
 }
 
 function parseMontants2nd(html) {
-  const analysees = analyserLignesGains(html);
-
-  let dernierIdxAvecChance = -1;
-  analysees.forEach((l, i) => { if (l.avecChance) dernierIdxAvecChance = i; });
-
+  const lignes = extraireLignesTableau(html);
   const rg = {};
-  analysees.forEach((l, i) => {
-    if (!l.avecChance && i > dernierIdxAvecChance && [2,3,4,5].includes(l.bons)) {
-      if (rg[String(l.bons)] === undefined) rg[String(l.bons)] = l.montant !== null ? l.montant : 0;
+  let dernierIdxAvecChance = -1;
+  for (let i = 0; i < lignes.length; i++) {
+    const cellText = lignes[i].join(' ');
+    if (/chance/i.test(cellText)) dernierIdxAvecChance = i;
+  }
+  for (let i = dernierIdxAvecChance + 1; i < lignes.length; i++) {
+    const cells = lignes[i];
+    for (let j = 0; j < cells.length; j++) {
+      const m = /(\d)\s*(?:bons?|bon)\b/i.exec(cells[j]);
+      if (m) {
+        const bons = parseInt(m[1]);
+        if ([2,3,4,5].includes(bons)) {
+          let montant = null;
+          for (let k = j + 1; k < cells.length; k++) {
+            if (/€|\/|pas de gagnant/i.test(cells[k])) {
+              montant = parseMontantCellule(cells[k]);
+              break;
+            }
+          }
+          if (rg[String(bons)] === undefined) rg[String(bons)] = montant !== null ? montant : 0;
+        }
+      }
     }
-  });
+  }
   for (const k of ['5','4','3','2']) if (rg[k] === undefined) rg[k] = 0;
-
   return rg;
 }
 
-const JOURS_FR = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
-const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-
-async function rescraperDate(dateISO) {
-  const d = new Date(dateISO);
-  const jour = JOURS_FR[d.getUTCDay()];
-  const num = d.getUTCDate();
-  const mois = MOIS_FR[d.getUTCMonth()];
-  const annee = d.getUTCFullYear();
-  const path = `/loto/resultat/tirage-loto-du-${jour}-${num}-${mois}-${annee}`;
-  const detail = await httpGet('www.secretsdujeu.com', path);
-  if (!detail.ok || detail.status !== 200) return null;
-  
-  const rg1 = parseMontants1er(detail.data);
-  const rg2 = parseMontants2nd(detail.data);
-  const result = {};
-  if (Object.values(rg1).some(v => v > 0)) result.rapportGains = rg1;
-  if (Object.values(rg2).some(v => v > 0)) result.rapportGains2 = rg2;
-  return Object.keys(result).length > 0 ? result : null;
-}
-
-async function scraper() {
-  console.log('[SCRAPE] Démarrage...');
-  const main = await httpGet('www.secretsdujeu.com','/page/jeux_loto_resultats.html');
-  if (!main.ok || main.status!==200) { lastError='Erreur page principale'; return null; }
-  const html = main.data;
-
-  let date = null;
-  const dm = /"dateModified":"(\d{4}-\d{2}-\d{2})/.exec(html);
-  if (dm) { date = dm[1]+'T20:50:00.000Z'; }
-  else {
-    const now=new Date(),day=now.getDay(),jours=[1,3,6];
-    let db=0;
-    for (let i=0;i<=7;i++) { if (jours.includes(((day-i)+7)%7)){db=i;break;} }
-    const last=new Date(now); last.setDate(now.getDate()-db);
-    if (db===0&&now.getHours()<21){for(let i=1;i<=7;i++){if(jours.includes(((day-i)+7)%7)){last.setDate(now.getDate()-i);break;}}}
-    last.setHours(20,50,0,0); date=last.toISOString();
-  }
-
-  const m = /combinaison gagnante[^0-9]*(\d+)-(\d+)-(\d+)-(\d+)-(\d+)[^0-9]*num.ro Chance est le (\d+)/.exec(html);
-  if (!m) { lastError='Numéros non trouvés'; return null; }
-  const nums = [1,2,3,4,5].map(i=>parseInt(m[i]));
-  const chance = parseInt(m[6]);
-  console.log('[SCRAPE] 1er: '+nums.join(',')+'  Chance: '+chance);
-
-  const urlM = /"url":"(https:\/\/www\.secretsdujeu\.com\/loto\/resultat\/tirage-loto-du-[^"]+)"/.exec(html);
-  let rg1 = {'5+1':0,'5':100000,'4+1':1000,'4':500,'3+1':50,'3':20,'2+1':9,'2':4,'1+1':2.20};
-  let rg2 = {}, nums2 = [];
-
-  if (urlM) {
-    const detail = await httpGet('www.secretsdujeu.com', urlM[1].replace('https://www.secretsdujeu.com',''));
-    if (detail.ok && detail.status===200) {
-      rg1 = parseMontants1er(detail.data);
-      rg2 = parseMontants2nd(detail.data);
-      const p2 = /class=["\']loto-numero second-tir["\'][^>]*>\s*(\d{1,2})\s*<\/p>/g;
-      let mm;
-      while ((mm=p2.exec(detail.data))!==null) nums2.push(parseInt(mm[1]));
-      if (nums2.length > 0) console.log('[SCRAPE] 2nd: '+nums2.join(','));
+function prochainTirage() {
+  const now = new Date();
+  const jours = [1, 3, 6];
+  for (let i = 0; i < 3; i++) {
+    const d = new Date(now);
+    d.setDate(now.getDate() + i);
+    const dayOfWeek = d.getDay();
+    if (jours.includes(dayOfWeek)) {
+      d.setHours(20, 50, 0, 0);
+      if (d > now) return d;
     }
   }
-
-  tirageCache = {nums, chance, nums2, date, rapportGains: rg1, rapportGains2: rg2};
-
-  const dateStr = date.split('T')[0];
-  const existant = allTirages.find(t =>
-    t.date.split('T')[0] === dateStr &&
-    sameNums(t.nums, nums) &&
-    sameNums(t.nums2, nums2)
-  );
-  if (existant) {
-    if (existant.rapportGains) tirageCache.rapportGains = existant.rapportGains;
-    if (existant.rapportGains2) tirageCache.rapportGains2 = existant.rapportGains2;
-    if (existant.nums2?.length) tirageCache.nums2 = existant.nums2;
-  }
-
-  cacheExpiry = prochainTirage();
-  sauvegarderCache();
-  console.log('[SCRAPE] ✅ Tirage '+dateStr);
-  return tirageCache;
+  const d = new Date(now);
+  d.setDate(now.getDate() + 7);
+  d.setHours(20, 50, 0, 0);
+  return d;
 }
 
-async function getTirage() {
-  if (cacheValide()) return tirageCache;
-  return await scraper();
-}
-
-function dejàEnregistré(t) {
-  return allTirages.some(x =>
-    x.date.split('T')[0] === t.date.split('T')[0] &&
-    sameNums(x.nums, t.nums) &&
-    sameNums(x.nums2, t.nums2)
-  );
+function cacheValide() {
+  return tirageCache && cacheExpiry && new Date() < cacheExpiry;
 }
 
 app.get('/api/loto-complet', async (req, res) => {
-  try {
-    const tirage = await getTirage();
-    if (!tirage) return res.status(500).json({success:false,error:lastError});
-    if (new Date(tirage.date)<DEBUT) {
-      cagnotte=0;allTirages=[];PARTICIPANTS.forEach(p=>{distribution[p]={gains:0,solde:-180};});
-      return res.json({success:true,tirage,cagnotte:'0.00',distribution,historique:[],timestamp:new Date().toISOString()});
-    }
-    if (!dejàEnregistré(tirage)) {
-      const { total, incoherent } = calculerGainsTirage(tirage);
-      console.log('[LOG] Gains: '+total+'€' + (incoherent ? ' ⚠️' : ''));
-      cagnotte += total;
-      if (cagnotte>=650) {
-        const pp=650/13;
-        PARTICIPANTS.forEach(p=>{distribution[p].gains+=pp;distribution[p].solde+=pp;});
-        cagnotte-=650;
-        console.log('[LOG] Distribution 650€ effectuée');
-      }
-      allTirages.push({nums:tirage.nums,chance:tirage.chance,nums2:tirage.nums2,gains:total,rapportGains:tirage.rapportGains,rapportGains2:tirage.rapportGains2,dataIncomplete:incoherent,date:tirage.date});
-      await sauvegarder();
-    }
-    const checkActuel = calculerGainsTirage(tirage);
-    res.json({success:true,tirage,tirageDataIncomplete:checkActuel.incoherent,cagnotte:cagnotte.toFixed(2),distribution,historique:allTirages.slice(-10),timestamp:new Date().toISOString()});
-  } catch(e) { res.status(500).json({success:false,error:e.message}); }
-});
-
-app.get('/api/bilan', (req, res) => {
-  const dist=Object.values(distribution).reduce((s,d)=>s+d.gains,0);
-  const gt=dist+cagnotte;
-  res.json({success:true,participants:PARTICIPANTS.map((n,i)=>({id:i+1,name:n,gains:distribution[n].gains.toFixed(2),solde:distribution[n].solde.toFixed(2)})),gainsTotal:gt.toFixed(2),soldeTotal:(gt-2340).toFixed(2),cagnotte:cagnotte.toFixed(2),tiragesEffectues:allTirages.length,timestamp:new Date().toISOString()});
-});
-
-app.get('/api/stats', (req, res) => {
-  const dist=Object.values(distribution).reduce((s,d)=>s+d.gains,0);
-  const gt=dist+cagnotte;
-  res.json({success:true,tiragesEffectues:allTirages.length,gainsTotal:gt.toFixed(2),roi:gt>0?((gt/2340)*100).toFixed(1)+'%':'0.0%',cagnotte:cagnotte.toFixed(2),historique:allTirages.slice(-10),timestamp:new Date().toISOString()});
-});
-
-app.get('/api/test', (req, res) => {
-  res.json({message:'OK',cache:{valide:cacheValide(),expire:cacheExpiry,tirage:tirageCache?tirageCache.nums:null},github:{token:!!GITHUB_TOKEN,sha:dataFileSha},timestamp:new Date().toISOString()});
-});
-
-app.get('/api/debug-html', async (req, res) => {
-  const main = await httpGet('www.secretsdujeu.com', '/page/jeux_loto_resultats.html');
-  if (!main.ok) return res.json({ok:false, error:'Erreur page principale'});
-  
-  const urlM = /"url":"(https:\/\/www\.secretsdujeu\.com\/loto\/resultat\/tirage-loto-du-[^"]+)"/.exec(main.data);
-  if (!urlM) return res.json({ok:false, error:'URL détail non trouvée'});
-  
-  const detail = await httpGet('www.secretsdujeu.com', urlM[1].replace('https://www.secretsdujeu.com',''));
-  if (!detail.ok) return res.json({ok:false, error:'Erreur page détail'});
-  
-  const html = detail.data;
-  
-  // Extraire les sections pertinentes
-  const tableauMatch = html.match(/<table[^>]*>[\s\S]*?<\/table>/i);
-  const gainsSection = html.match(/(?:montants|gains|rapport)[^<]*<[\s\S]*?(?:tableau|table)[^<]*[\s\S]{0,2000}/i);
-  
-  // Chercher les patterns clés
-  const montantPatterns = html.match(/[\d\s,.']+(?:\s*(?:€|EUR|euros?)|(?=\s*<))/gi) || [];
-  const bonsPatterns = html.match(/\d\s*(?:bons?|bon)\b[^\n]{0,100}/gi) || [];
-  
-  res.json({
-    ok: true,
-    url: urlM[1],
-    htmlLength: html.length,
-    hasTable: /<table/i.test(html),
-    hasTr: /<tr/i.test(html),
-    hasDiv: /<div[^>]*loto/i.test(html),
-    hasBons: /\d\s*(?:bons?|bon)\b/i.test(html),
-    hasEuro: /€|&euro;|EUR/.test(html),
-    montantPatterns: montantPatterns.slice(0, 20),
-    bonsPatterns: bonsPatterns.slice(0, 20),
-    tableauSnippet: tableauMatch ? tableauMatch[0].substring(0, 1000) : null,
-    gainsSectionSnippet: gainsSection ? gainsSection[0].substring(0, 500) : null
-  });
-});
-
-app.get('/api/force-scrape', async (req, res) => {
-  const logs = [];
-  logs.push('[FORCE-SCRAPE] Démarrage du scraping forcé...');
-  
-  tirageCache = null;
-  cacheExpiry = null;
+  if (cacheValide()) {
+    return res.json({success:true,tirage:tirageCache,historique:allTirages,distribution,cagnotte});
+  }
   
   const mainResp = await httpGet('www.secretsdujeu.com', '/page/jeux_loto_resultats.html');
-  if (!mainResp.ok || mainResp.status !== 200) {
-    lastError = 'Erreur page principale';
-    logs.push('[FORCE-SCRAPE] ❌ Erreur page principale');
-    console.log(logs.join('\n'));
-    return res.json({success:false,error:lastError,logs});
+  if (!mainResp.ok) {
+    return res.json({success:false,tirage:tirageCache,historique:allTirages,distribution,cagnotte,error:'Erreur scraping'});
   }
   
   const html = mainResp.data;
-  
   let date = null;
-  const dm = /"dateModified":"(\d{4}-\d{2}-\d{2})/.exec(html);
-  if (dm) { date = dm[1]+'T20:50:00.000Z'; }
+  const dm = /\"dateModified\":\"(\d{4}-\d{2}-\d{2})/.exec(html);
+  if (dm) date = dm[1]+'T20:50:00.000Z';
   else {
     const now = new Date(), day = now.getDay(), jours = [1,3,6];
     let db = 0;
@@ -545,106 +266,49 @@ app.get('/api/force-scrape', async (req, res) => {
   
   const m = /combinaison gagnante[^0-9]*(\d+)-(\d+)-(\d+)-(\d+)-(\d+)[^0-9]*num.ro Chance est le (\d+)/.exec(html);
   if (!m) {
-    lastError = 'Numéros non trouvés';
-    logs.push('[FORCE-SCRAPE] ❌ Numéros non trouvés');
-    console.log(logs.join('\n'));
-    return res.json({success:false,error:lastError,logs});
+    return res.json({success:false,tirage:tirageCache,historique:allTirages,distribution,cagnotte,error:'Numéros non trouvés'});
   }
   
   const nums = [1,2,3,4,5].map(i => parseInt(m[i]));
   const chance = parseInt(m[6]);
-  logs.push('[FORCE-SCRAPE] 1er: '+nums.join(',')+'  Chance: '+chance);
-  
-  const urlM = /"url":"(https:\/\/www\.secretsdujeu\.com\/loto\/resultat\/tirage-loto-du-[^"]+)"/.exec(html);
   let rg1 = {'5+1':0,'5':100000,'4+1':1000,'4':500,'3+1':50,'3':20,'2+1':9,'2':4,'1+1':2.20};
   let rg2 = {}, nums2 = [];
   
+  const urlM = /\"url\":\"(https:\/\/www\.secretsdujeu\.com\/loto\/resultat\/tirage-loto-du-[^\"]+)\"/.exec(html);
   if (urlM) {
     const detail = await httpGet('www.secretsdujeu.com', urlM[1].replace('https://www.secretsdujeu.com',''));
     if (detail.ok && detail.status === 200) {
-      // Diagnostiquer le parsing
-      const analysees = analyserLignesGains(detail.data);
-      logs.push('[DEBUG] analyserLignesGains retourne '+analysees.length+' lignes');
-      if (analysees.length > 0) {
-        logs.push('[DEBUG] Échantillon: '+JSON.stringify(analysees.slice(0, 3)));
-      } else {
-        const hasTr = /<tr/.test(detail.data);
-        const hasDiv = /<div[^>]*loto/.test(detail.data);
-        const hasBons = /\d\s*(?:bons?|bon)\b/i.test(detail.data);
-        const hasEuro = /€/.test(detail.data);
-        logs.push('[DEBUG] HTML: tr='+hasTr+' div='+hasDiv+' bons='+hasBons+' euro='+hasEuro);
-      }
-      
       rg1 = parseMontants1er(detail.data);
       rg2 = parseMontants2nd(detail.data);
-      const p2 = /class=["\']loto-numero second-tir["\'][^>]*>\s*(\d{1,2})\s*<\/p>/g;
+      const p2 = /class=[\"']loto-numero second-tir[\"'][^>]*>\s*(\d{1,2})\s*<\/p>/g;
       let mm;
       while ((mm = p2.exec(detail.data)) !== null) nums2.push(parseInt(mm[1]));
-      if (nums2.length > 0) logs.push('[FORCE-SCRAPE] 2nd: '+nums2.join(','));
-      logs.push('[FORCE-SCRAPE] 1er montants: 5='+rg1['5']+'€ 4='+rg1['4']+'€ 3='+rg1['3']+'€');
-      logs.push('[FORCE-SCRAPE] 2nd montants: 5='+rg2['5']+'€ 4='+rg2['4']+'€ 3='+rg2['3']+'€ 2='+rg2['2']+'€');
     }
   }
   
   const tirage = {nums, chance, nums2, date, rapportGains: rg1, rapportGains2: rg2};
+  const total = calculerGainsTirage(tirage);
   
-  // Mettre à jour le cache
   tirageCache = tirage;
   cacheExpiry = prochainTirage();
   
-  // Calculer les gains
-  const { total, incoherent } = calculerGainsTirage(tirage);
-  
-  // Trouver s'il existe déjà
-  const existantIndex = allTirages.findIndex(t =>
-    t.date.split('T')[0] === tirage.date.split('T')[0] &&
-    sameNums(t.nums, tirage.nums) &&
-    sameNums(t.nums2, tirage.nums2)
-  );
-  
-  if (existantIndex >= 0) {
-    const ancienGain = allTirages[existantIndex].gains || 0;
-    cagnotte = cagnotte - ancienGain + total;
-    
-    allTirages[existantIndex] = {
-      nums: tirage.nums,
-      chance: tirage.chance,
-      nums2: tirage.nums2,
-      gains: total,
-      rapportGains: tirage.rapportGains,
-      rapportGains2: tirage.rapportGains2,
-      dataIncomplete: incoherent,
-      date: tirage.date
-    };
-    
-    logs.push('[FORCE-SCRAPE] Historique mis à jour : ancien gain '+ancienGain.toFixed(2)+'€ → '+total.toFixed(2)+'€');
-  } else {
-    cagnotte += total;
-    allTirages.push({
-      nums: tirage.nums,
-      chance: tirage.chance,
-      nums2: tirage.nums2,
-      gains: total,
-      rapportGains: tirage.rapportGains,
-      rapportGains2: tirage.rapportGains2,
-      dataIncomplete: incoherent,
-      date: tirage.date
-    });
-    
-    logs.push('[FORCE-SCRAPE] Nouveau tirage ajouté : '+total.toFixed(2)+'€');
-  }
-  
-  await sauvegarder();
-  sauvegarderCache();
-  logs.push('[FORCE-SCRAPE] ✅ Scraping forcé réussi et sauvegardé');
-  
-  console.log(logs.join('\n'));
-  res.json({success:true, tirage, logs, message:'Rechargez Accueil pour recalculer.', timestamp:new Date().toISOString()});
+  res.json({success:true,tirage,historique:allTirages,distribution,cagnotte});
+});
+
+app.get('/api/stats', async (req, res) => {
+  res.json({success:true,historique:allTirages,distribution,cagnotte,tirage:tirageCache});
+});
+
+app.get('/api/bilan', async (req, res) => {
+  res.json({success:true,distribution,cagnotte});
+});
+
+app.get('/api/test', (req, res) => {
+  res.json({ok:true,allTirages:allTirages.length,cagnotte:cagnotte.toFixed(2),GITHUB_TOKEN:GITHUB_TOKEN?'✅':'❌'});
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log('✅ Port '+PORT);
-  chargerCache();
   await chargerDonnees();
 });
