@@ -13,7 +13,40 @@ const GITHUB_REPO = process.env.GITHUB_REPO || 'MUXOIK/lotopotes';
 
 let allTirages = [], distribution = {}, cagnotte = 0, lastError = '';
 let tirageCache = null, cacheExpiry = null, dataFileSha = null;
+const fs = require('fs');
+const path = require('path');
+const CACHE_FILE = path.join(process.cwd(), 'cache.json');
 PARTICIPANTS.forEach(p => { distribution[p] = {gains:0,solde:-180}; });
+
+function sauvegarderCache() {
+  if (!tirageCache || !cacheExpiry) return;
+  try {
+    const data = {tirage: tirageCache, expiry: cacheExpiry.toISOString()};
+    fs.writeFileSync(CACHE_FILE, JSON.stringify(data, null, 2));
+    console.log('[CACHE] Sauvegardé dans '+CACHE_FILE);
+  } catch(e) { console.log('[CACHE] Erreur sauvegarde: '+e.message); }
+}
+
+function chargerCache() {
+  try {
+    if (!fs.existsSync(CACHE_FILE)) return false;
+    const data = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+    if (!data.tirage || !data.expiry) return false;
+    const expiry = new Date(data.expiry);
+    if (new Date() > expiry) {
+      console.log('[CACHE] Expiré, suppression');
+      fs.unlinkSync(CACHE_FILE);
+      return false;
+    }
+    tirageCache = data.tirage;
+    cacheExpiry = expiry;
+    console.log('[CACHE] Chargé depuis fichier, expire '+expiry.toISOString());
+    return true;
+  } catch(e) {
+    console.log('[CACHE] Erreur chargement: '+e.message);
+    return false;
+  }
+}
 
 function sameNums(a, b) {
   if (!a || !b || a.length !== b.length) return false;
@@ -380,6 +413,7 @@ async function scraper() {
   }
 
   cacheExpiry = prochainTirage();
+  sauvegarderCache();
   console.log('[SCRAPE] ✅ Tirage '+dateStr);
   return tirageCache;
 }
@@ -433,6 +467,10 @@ app.get('/api/stats', (req, res) => {
   const dist=Object.values(distribution).reduce((s,d)=>s+d.gains,0);
   const gt=dist+cagnotte;
   res.json({success:true,tiragesEffectues:allTirages.length,gainsTotal:gt.toFixed(2),roi:gt>0?((gt/2340)*100).toFixed(1)+'%':'0.0%',cagnotte:cagnotte.toFixed(2),historique:allTirages.slice(-10),timestamp:new Date().toISOString()});
+});
+
+app.get('/api/test', (req, res) => {
+  res.json({message:'OK',cache:{valide:cacheValide(),expire:cacheExpiry,tirage:tirageCache?tirageCache.nums:null},github:{token:!!GITHUB_TOKEN,sha:dataFileSha},timestamp:new Date().toISOString()});
 });
 
 app.get('/api/debug-html', async (req, res) => {
@@ -597,6 +635,7 @@ app.get('/api/force-scrape', async (req, res) => {
   }
   
   await sauvegarder();
+  sauvegarderCache();
   logs.push('[FORCE-SCRAPE] ✅ Scraping forcé réussi et sauvegardé');
   
   console.log(logs.join('\n'));
@@ -606,5 +645,6 @@ app.get('/api/force-scrape', async (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log('✅ Port '+PORT);
+  chargerCache();
   await chargerDonnees();
 });
