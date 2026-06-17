@@ -300,7 +300,9 @@ app.get('/api/stats', async (req, res) => {
 });
 
 app.get('/api/bilan', async (req, res) => {
-  res.json({success:true,distribution,cagnotte});
+  const gainsTotal = allTirages.reduce((sum, t) => sum + (t.gains || 0), 0);
+  const tiragesEffectues = allTirages.length;
+  res.json({success:true,gainsTotal,tiragesEffectues,distribution,cagnotte});
 });
 
 app.get('/api/test', (req, res) => {
