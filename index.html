@@ -641,6 +641,18 @@
     </div>
 
     <script>
+        // ===== PATCH FIX : Nettoyer espaces JSON =====
+        function cleanJsonKeys(obj) {
+            if (!obj || typeof obj !== "object") return obj;
+            if (Array.isArray(obj)) return obj.map(cleanJsonKeys);
+            const cleaned = {};
+            for (const key in obj) {
+                const cleanKey = key.trim();
+                cleaned[cleanKey] = cleanJsonKeys(obj[key]);
+            }
+            return cleaned;
+        }
+        // ===== FIN PATCH =====
         const BACKEND_URL = 'https://lotopotes-1.onrender.com';
 
         function showSection(sectionId) {
@@ -670,7 +682,8 @@
         async function loadTirage() {
             try {
                 const resp = await fetch(`${BACKEND_URL}/api/loto-complet`);
-                const data = await resp.json();
+                let data = await resp.json();
+                data = cleanJsonKeys(data);
 
                 if (data.success && data.tirage) {
                     const nums = data.tirage.nums;
@@ -798,7 +811,8 @@
         async function loadBilan() {
             try {
                 const resp = await fetch(`${BACKEND_URL}/api/bilan`);
-                const data = await resp.json();
+                let data = await resp.json();
+                data = cleanJsonKeys(data);
                 if (data.success) {
                     const gains = parseFloat(data.gainsTotal) || 0;
                     const cagnotte = parseFloat(data.cagnotte) || 0;
@@ -862,7 +876,9 @@
         async function loadHistorique() {
             try {
                 const resp = await fetch(`${BACKEND_URL}/api/stats`);
-                const data = await resp.json();
+                let data = await resp.json();
+                data = cleanJsonKeys(data);
+                
 
                 document.getElementById('loading-historique').style.display = 'none';
                 document.getElementById('historique-content').style.display = 'block';
@@ -979,7 +995,7 @@
         async function loadProbabilites() {
             try {
                 const resp = await fetch(`${BACKEND_URL}/api/stats`);
-                const data = await resp.json();
+                
                 document.getElementById('loading-probabilites').style.display = 'none';
                 document.getElementById('probabilites-content').style.display = 'block';
 
@@ -1258,7 +1274,7 @@
             result.style.display = 'none';
             try {
                 const resp = await fetch(`${BACKEND_URL}/api/force-scrape`);
-                const data = await resp.json();
+                
                 result.style.display = 'block';
                 if (data.success) {
                     result.style.color = '#86efac';
@@ -1279,7 +1295,7 @@
         async function loadCacheStatus() {
             try {
                 const resp = await fetch(`${BACKEND_URL}/api/test`);
-                const data = await resp.json();
+                
                 const cache = data.cache || {};
                 const expire = cache.expire ? new Date(cache.expire).toLocaleString('fr-FR') : 'N/A';
                 document.getElementById('cache-status').innerHTML = `
@@ -1294,7 +1310,7 @@
         async function loadSysInfo() {
             try {
                 const resp = await fetch(`${BACKEND_URL}/api/test`);
-                const data = await resp.json();
+                
                 document.getElementById('admin-sysinfo').innerHTML = `
                     <div>Serveur : <span style="color:#86efac;">✅ En ligne</span></div>
                     <div>Heure serveur : ${new Date(data.timestamp).toLocaleString('fr-FR')}</div>
