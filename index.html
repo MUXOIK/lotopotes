@@ -722,45 +722,8 @@
                     document.getElementById('tirage-content').style.display = 'block';
 
                     // === DÉTECTION GAIN + ANIMATION ===
-                    const GRILLES = [[7,12,23,34,45],[6,15,28,39,48],[3,18,31,42,49],[8,19,32,41,46],[5,22,29,35,44]];
-                    const CHANCES = [9,6,4,1,7];
-                    const rg = data.tirage.rapportGains || {};
-                    const tirageDate = data.tirage.date ? data.tirage.date.split('T')[0] : '';
-                    const tirageHist = (data.historique || []).find(t => t.date && t.date.split('T')[0] === tirageDate);
-                    const rg2 = (tirageHist && tirageHist.rapportGains2 && Object.values(tirageHist.rapportGains2).some(v=>v>0))
-                        ? tirageHist.rapportGains2
-                        : (data.tirage.rapportGains2 || {});
-                    const nums2Gain = (nums2 && nums2.length === 5) ? nums2 : (tirageHist ? tirageHist.nums2 || [] : []);
-                    const a2 = nums2Gain.length === 5 && Object.values(rg2).some(v=>v>0);
-                    let gainDuTirage = 0;
-                    const grillesGagnantes = [];
-
-                    GRILLES.forEach((grille, idx) => {
-                        // 1er tirage
-                        const n = nums.filter(x => grille.includes(x)).length;
-                        const c = (CHANCES[idx] === chance);
-                        let g = 0;
-                        if (n===5&&c) g=rg['5+1']||0;
-                        else if (n===5) g=rg['5']||0;
-                        else if (n===4&&c) g=rg['4+1']||0;
-                        else if (n===4) g=rg['4']||0;
-                        else if (n===3&&c) g=rg['3+1']||0;
-                        else if (n===3) g=rg['3']||0;
-                        else if (n===2&&c) g=rg['2+1']||0;
-                        else if (n===2) g=rg['2']||0;
-                        else if (n<=1&&c) g=rg['1+1']||0;
-                        if (g > 0) { gainDuTirage += g; grillesGagnantes.push({idx: idx+1, gain: g, t: '1er'}); }
-
-                        if (a2) {
-                            const n2 = nums2Gain.filter(x => grille.includes(x)).length;
-                            let g2 = 0;
-                            if (n2===5) g2=rg2['5']||0;
-                            else if (n2===4) g2=rg2['4']||0;
-                            else if (n2===3) g2=rg2['3']||0;
-                            else if (n2===2) g2=rg2['2']||0;
-                            if (g2 > 0) { gainDuTirage += g2; grillesGagnantes.push({idx: idx+1, gain: g2, t: '2nd'}); }
-                        }
-                    });
+                    const grillesGagnantes = data.tirage.gainsDetails || [];
+                    const gainDuTirage = data.tirage.gainTotal || 0;
 
                     // Supprimer bannière précédente si elle existe
                     const oldBanner = document.getElementById('banniere-gain');
@@ -778,7 +741,7 @@
                             <div style="font-size:2rem;margin-bottom:4px;">🎉🏆🎉</div>
                             <div style="font-size:1.4rem;font-weight:bold;color:#1f2937;">ON A GAGNÉ !</div>
                             <div style="font-size:1.1rem;color:#1f2937;margin-top:4px;">
-                                ${grillesGagnantes.map(g => `Grille ${g.idx} (${g.t}) → <strong>${g.gain.toFixed(2)}€</strong>`).join(' &nbsp;|&nbsp; ')}
+                                ${grillesGagnantes.map(g => `Grille ${g.grille} (${g.tirage}) → <strong>${g.gain.toFixed(2)}€</strong>`).join(' &nbsp;|&nbsp; ')}
                             </div>
                             <div style="font-size:1.3rem;font-weight:bold;color:#1f2937;margin-top:6px;">Total : ${gainDuTirage.toFixed(2)}€ 🎰</div>
                         `;

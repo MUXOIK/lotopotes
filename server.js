@@ -46,6 +46,7 @@ function calculerGainsTirage(t) {
   const rg2 = t.rapportGains2 || {};
   const a2 = t.nums2 && t.nums2.length === 5 && Object.values(rg2).some(v=>v>0);
   let total = 0;
+  const gainsDetails = [];
   for (let i = 0; i < GRILLES.length; i++) {
     const n = t.nums.filter(x => GRILLES[i].includes(x)).length;
     const c = (CHANCES[i] === t.chance);
@@ -59,7 +60,7 @@ function calculerGainsTirage(t) {
     else if (n===2&&c) g=rg['2+1']||0;
     else if (n===2) g=rg['2']||0;
     else if (n<=1&&c) g=rg['1+1']||0;
-    total += g;
+    if (g > 0) { total += g; gainsDetails.push({grille: i+1, tirage: '1er', gain: g}); }
     if (a2 && rg2) {
       const n2 = t.nums2.filter(x => GRILLES[i].includes(x)).length;
       let g2 = 0;
@@ -67,10 +68,10 @@ function calculerGainsTirage(t) {
       else if (n2===4) g2=rg2['4']||0;
       else if (n2===3) g2=rg2['3']||0;
       else if (n2===2) g2=rg2['2']||0;
-      total += g2;
+      if (g2 > 0) { total += g2; gainsDetails.push({grille: i+1, tirage: '2nd', gain: g2}); }
     }
   }
-  return total;
+  return {total, gainsDetails};
 }
 
 async function sauvegarder() {
@@ -287,7 +288,9 @@ app.get('/api/loto-complet', async (req, res) => {
   }
   
   const tirage = {nums, chance, nums2, date, rapportGains: rg1, rapportGains2: rg2};
-  const total = calculerGainsTirage(tirage);
+  const {total, gainsDetails} = calculerGainsTirage(tirage);
+  tirage.gainsDetails = gainsDetails;
+  tirage.gainTotal = total;
   
   tirageCache = tirage;
   cacheExpiry = prochainTirage();
