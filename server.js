@@ -152,35 +152,26 @@ function parseMontantCellule(texte) {
 
 function parseMontants1er(html) {
   const lignes = extraireLignesTableau(html);
-  const rg = {};
-  const ordreAttendu = ['5+1','5','4+1','4','3+1','3','2+1','2','1+1'];
-  let dernierIdxAvecChance = -1;
+  const rg = {'5+1':0,'5':0,'4+1':0,'4':0,'3+1':0,'3':0,'2+1':0,'2':0,'1+1':0};
   for (let i = 0; i < lignes.length; i++) {
-    const cellText = lignes[i].join(' ');
-    if (/chance/i.test(cellText)) dernierIdxAvecChance = i;
-  }
-  for (let i = 0; i <= dernierIdxAvecChance && i < lignes.length; i++) {
     const cells = lignes[i];
+    const rowText = cells.join(' ');
+    const bonsMatch = /(\d)\s*(?:bons?|bon)\b/i.exec(rowText);
+    if (!bonsMatch) continue;
+    const bons = parseInt(bonsMatch[1]);
+    const avecChance = /chance/i.test(rowText);
+    let montant = null;
     for (let j = 0; j < cells.length; j++) {
-      const m = /(\d)\s*(?:bons?|bon)\b/i.exec(cells[j]);
-      if (m) {
-        const bons = parseInt(m[1]);
-        const avecChance = /chance/i.test(cells[j]);
-        let montant = null;
-        for (let k = j + 1; k < cells.length; k++) {
-          if (/€|\/|pas de gagnant/i.test(cells[k])) {
-            montant = parseMontantCellule(cells[k]);
-            break;
-          }
-        }
-        const idx = i + (avecChance ? 1 : 0);
-        if (idx < ordreAttendu.length) {
-          rg[ordreAttendu[idx]] = montant !== null ? montant : 0;
-        }
+      if (/€|\/|pas de gagnant/i.test(cells[j])) {
+        montant = parseMontantCellule(cells[j]);
+        break;
       }
     }
+    const cle = avecChance ? (bons+'+1') : String(bons);
+    if (cle in rg) {
+      rg[cle] = montant !== null ? montant : 0;
+    }
   }
-  for (const k of ordreAttendu) if (rg[k] === undefined) rg[k] = 0;
   return rg;
 }
 
