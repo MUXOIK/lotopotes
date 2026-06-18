@@ -154,8 +154,9 @@ function parseMontants1er(html) {
   const lignes = extraireLignesTableau(html);
   const rg = {'5+1':0,'5':0,'4+1':0,'4':0,'3+1':0,'3':0,'2+1':0,'2':0,'1+1':0};
   for (let i = 0; i < lignes.length; i++) {
+    const rowText = lignes[i].join(' ');
+    if (/2nd.*tirage|second.*tirage/i.test(rowText)) break;
     const cells = lignes[i];
-    const rowText = cells.join(' ');
     const bonsMatch = /(\d)\s*(?:bons?|bon)\b/i.exec(rowText);
     if (!bonsMatch) continue;
     const bons = parseInt(bonsMatch[1]);
