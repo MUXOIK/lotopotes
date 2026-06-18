@@ -157,7 +157,7 @@ function parseMontants1er(html) {
     const rowText = lignes[i].join(' ');
     if (/2nd.*tirage|second.*tirage/i.test(rowText)) break;
     const cells = lignes[i];
-    const bonsMatch = /(\d)\s*(?:bons?|bon)\b/i.exec(rowText);
+    const bonsMatch = /^(\d)\s*(?:bons?|bon)\b/i.exec(cells[0] || '');
     if (!bonsMatch) continue;
     const bons = parseInt(bonsMatch[1]);
     const avecChance = /chance/i.test(rowText);
@@ -186,20 +186,18 @@ function parseMontants2nd(html) {
   }
   for (let i = dernierIdxAvecChance + 1; i < lignes.length; i++) {
     const cells = lignes[i];
-    for (let j = 0; j < cells.length; j++) {
-      const m = /(\d)\s*(?:bons?|bon)\b/i.exec(cells[j]);
-      if (m) {
-        const bons = parseInt(m[1]);
-        if ([2,3,4,5].includes(bons)) {
-          let montant = null;
-          for (let k = j + 1; k < cells.length; k++) {
-            if (/€|\/|pas de gagnant/i.test(cells[k])) {
-              montant = parseMontantCellule(cells[k]);
-              break;
-            }
+    const m = /^(\d)\s*(?:bons?|bon)\b/i.exec(cells[0] || '');
+    if (m) {
+      const bons = parseInt(m[1]);
+      if ([2,3,4,5].includes(bons)) {
+        let montant = null;
+        for (let k = 0; k < cells.length; k++) {
+          if (/€|\/|pas de gagnant/i.test(cells[k])) {
+            montant = parseMontantCellule(cells[k]);
+            break;
           }
-          if (rg[String(bons)] === undefined) rg[String(bons)] = montant !== null ? montant : 0;
         }
+        if (rg[String(bons)] === undefined) rg[String(bons)] = montant !== null ? montant : 0;
       }
     }
   }
