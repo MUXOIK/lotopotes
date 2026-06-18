@@ -294,6 +294,20 @@ app.get('/api/loto-complet', async (req, res) => {
   }
   
   const tirage = {nums, chance, nums2, date, rapportGains: rg1, rapportGains2: rg2};
+  
+  // FALLBACK : Si scraping échoue (zéros), reprendre l'historique
+  const dateStr = date.split('T')[0];
+  const existant = allTirages.find(t =>
+    t.date.split('T')[0] === dateStr &&
+    sameNums(t.nums, nums) &&
+    sameNums(t.nums2, nums2)
+  );
+  
+  if (existant && Object.values(tirage.rapportGains).every(v => v === 0)) {
+    tirage.rapportGains = existant.rapportGains || tirage.rapportGains;
+    tirage.rapportGains2 = existant.rapportGains2 || tirage.rapportGains2;
+  }
+  
   const {total, gainsDetails} = calculerGainsTirage(tirage);
   tirage.gainsDetails = gainsDetails;
   tirage.gainTotal = total;
