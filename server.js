@@ -153,27 +153,30 @@ function parseMontantCellule(texte) {
 function parseMontants1er(html) {
   const lignes = extraireLignesTableau(html);
   const rg = {'5+1':0,'5':0,'4+1':0,'4':0,'3+1':0,'3':0,'2+1':0,'2':0,'1+1':0};
+  
   for (let i = 0; i < lignes.length; i++) {
     const rowText = lignes[i].join(' ');
     if (/2nd.*tirage|second.*tirage/i.test(rowText)) break;
-    const cells = lignes[i];
     
-    // Match "0 ou 1 bon N°" ou "X bons N°"
+    const cells = lignes[i];
     let bonsMatch = /^(\d)\s*(?:bons?|bon)\b/i.exec(cells[0] || '');
+    
     if (!bonsMatch && /0.*ou.*1.*bon/i.test(cells[0])) {
-      bonsMatch = ['', '1']; // Pour "0 ou 1" on prend 1
+      bonsMatch = ['', '1'];
     }
     if (!bonsMatch) continue;
     
     const bons = parseInt(bonsMatch[1]);
     const avecChance = /chance/i.test(rowText);
     let montant = null;
+    
     for (let j = 0; j < cells.length; j++) {
       if (/€|\/|pas de gagnant/i.test(cells[j])) {
         montant = parseMontantCellule(cells[j]);
         break;
       }
     }
+    
     const cle = avecChance ? (bons+'+1') : String(bons);
     if (cle in rg) {
       rg[cle] = montant !== null ? montant : 0;
@@ -184,30 +187,37 @@ function parseMontants1er(html) {
 
 function parseMontants2nd(html) {
   const lignes = extraireLignesTableau(html);
-  const rg = {};
-  let dernierIdxAvecChance = -1;
+  const rg = {'5':0,'4':0,'3':0,'2':0};
+  let foundSecond = false;
+  
   for (let i = 0; i < lignes.length; i++) {
-    const cellText = lignes[i].join(' ');
-    if (/chance/i.test(cellText)) dernierIdxAvecChance = i;
-  }
-  for (let i = dernierIdxAvecChance + 1; i < lignes.length; i++) {
+    const rowText = lignes[i].join(' ');
+    if (/2nd.*tirage|second.*tirage/i.test(rowText)) {
+      foundSecond = true;
+      continue;
+    }
+    if (!foundSecond) continue;
+    
     const cells = lignes[i];
-    const m = /^(\d)\s*(?:bons?|bon)\b/i.exec(cells[0] || '');
-    if (m) {
-      const bons = parseInt(m[1]);
-      if ([2,3,4,5].includes(bons)) {
-        let montant = null;
-        for (let k = 0; k < cells.length; k++) {
-          if (/€|\/|pas de gagnant/i.test(cells[k])) {
-            montant = parseMontantCellule(cells[k]);
-            break;
-          }
-        }
-        if (rg[String(bons)] === undefined) rg[String(bons)] = montant !== null ? montant : 0;
+    const bonsMatch = /^(\d)\s*(?:bons?|bon)\b/i.exec(cells[0] || '');
+    if (!bonsMatch) continue;
+    
+    const bons = parseInt(bonsMatch[1]);
+    if (![2,3,4,5].includes(bons)) continue;
+    
+    let montant = null;
+    for (let j = 0; j < cells.length; j++) {
+      if (/€|\/|pas de gagnant/i.test(cells[j])) {
+        montant = parseMontantCellule(cells[j]);
+        break;
       }
     }
+    
+    const cle = String(bons);
+    if (cle in rg && rg[cle] === 0) {
+      rg[cle] = montant !== null ? montant : 0;
+    }
   }
-  for (const k of ['5','4','3','2']) if (rg[k] === undefined) rg[k] = 0;
   return rg;
 }
 
