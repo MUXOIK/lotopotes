@@ -157,8 +157,14 @@ function parseMontants1er(html) {
     const rowText = lignes[i].join(' ');
     if (/2nd.*tirage|second.*tirage/i.test(rowText)) break;
     const cells = lignes[i];
-    const bonsMatch = /^(\d)\s*(?:bons?|bon)\b/i.exec(cells[0] || '');
+    
+    // Match "0 ou 1 bon N°" ou "X bons N°"
+    let bonsMatch = /^(\d)\s*(?:bons?|bon)\b/i.exec(cells[0] || '');
+    if (!bonsMatch && /0.*ou.*1.*bon/i.test(cells[0])) {
+      bonsMatch = ['', '1']; // Pour "0 ou 1" on prend 1
+    }
     if (!bonsMatch) continue;
+    
     const bons = parseInt(bonsMatch[1]);
     const avecChance = /chance/i.test(rowText);
     let montant = null;
