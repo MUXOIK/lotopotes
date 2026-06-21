@@ -346,6 +346,9 @@ function cacheValide() {
 // ============================================
 
 app.get('/api/loto-complet', async (req, res) => {
+  // Attendre la fin de l'initialisation si le serveur vient de démarrer
+  if (initPromise) await initPromise;
+
   if (cacheValide()) {
     const {total, gainsDetails} = calculerGainsTirage(tirageScrape);
     return res.json({success:true,tirage:{...tirageScrape,gainTotal:total,gainsDetails},historique:allGains,distribution,cagnotte});
@@ -435,10 +438,12 @@ app.get('/api/loto-complet', async (req, res) => {
 });
 
 app.get('/api/stats', async (req, res) => {
+  if (initPromise) await initPromise;
   res.json({success:true,historique:allGains,distribution,cagnotte});
 });
 
 app.get('/api/bilan', async (req, res) => {
+  if (initPromise) await initPromise;
   const gainsTotal = allGains.reduce((sum, t) => sum + (t.gains || 0), 0);
   const tiragesEffectues = nombreTirages;
   res.json({success:true,gainsTotal,tiragesEffectues,distribution,cagnotte});
@@ -452,14 +457,14 @@ app.get('/api/test', (req, res) => {
 // DÉMARRAGE
 // ============================================
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, async () => {
-  console.log('✅ Port '+PORT);
+// Promesse d'initialisation — les requêtes l'attendent si le serveur vient de démarrer
+let initPromise = null;
+
+async function initialiser() {
+  console.log('[INIT] Chargement des données...');
   await chargerHistoriqueDonnees();
   await chargerScrapeData();
   await chargerCompteurTirages();
-  
-  // Pré-remplir le cache avec le tirage scrappé
   if (tirageScrape) {
     cacheExpiry = prochainTirage();
     const {total, gainsDetails} = calculerGainsTirage(tirageScrape);
@@ -467,4 +472,11 @@ app.listen(PORT, async () => {
     tirageScrape.gainsDetails = gainsDetails;
     console.log('[CACHE] ✅ Pré-rempli avec tirage du '+tirageScrape.date.split('T')[0]);
   }
+  console.log('[INIT] ✅ Prêt — cache valide: '+cacheValide());
+}
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log('✅ Port '+PORT);
+  initPromise = initialiser();
 });
