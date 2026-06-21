@@ -3,7 +3,7 @@ import { fetchLotoComplet } from '../lib/api'
 import { GRILLES, CHANCES, COTISATION_TOTALE } from '../lib/constants'
 import type { ApiLotoComplet } from '../lib/types'
 import { Boule } from '../components/Boule'
-import { Spinner, ErrorMsg, Card } from '../components/ui'
+import { Spinner, ErrorMsg, Card, EmptyState } from '../components/ui'
 import { Confetti } from '../components/Confetti'
 
 export function SectionAccueil() {
@@ -63,7 +63,7 @@ export function SectionAccueil() {
         {loading ? (
           <Spinner />
         ) : error ? (
-          <ErrorMsg message={error} />
+          <ErrorMsg message={error} onRetry={load} />
         ) : data?.tirage ? (
           <div className="space-y-3">
             <div className="bg-gray-700/60 rounded-lg p-3">
@@ -95,7 +95,7 @@ export function SectionAccueil() {
             </p>
           </div>
         ) : (
-          <p className="text-gray-400 text-sm">Aucun tirage disponible</p>
+          <EmptyState icon="🎰" title="Aucun tirage disponible" subtitle="Le prochain tirage s'affichera automatiquement." />
         )}
       </Card>
 

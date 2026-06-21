@@ -10,13 +10,15 @@
     margin: 0;
     padding: 0;
   }
+  html, body, #root {
+    height: 100%;
+    overscroll-behavior: none;
+  }
   body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     -webkit-tap-highlight-color: transparent;
     -webkit-font-smoothing: antialiased;
-  }
-  .overflow-x-auto::-webkit-scrollbar {
-    display: none;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 
@@ -33,31 +35,38 @@
   .animate-bounce-x {
     animation: bounceX 1s ease-in-out infinite;
   }
+  .animate-fade-in {
+    animation: fadeIn 0.2s ease-out;
+  }
+  /* iOS safe area for bottom nav */
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
 }
 
 @keyframes popIn {
-  0% { transform: scale(0) rotate(-15deg); opacity: 0; }
-  80% { transform: scale(1.1) rotate(3deg); }
+  0%   { transform: scale(0) rotate(-15deg); opacity: 0; }
+  80%  { transform: scale(1.1) rotate(3deg); }
   100% { transform: scale(1) rotate(0deg); opacity: 1; }
 }
-
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
   20%, 60% { transform: translateX(-8px); }
   40%, 80% { transform: translateX(8px); }
 }
-
 @keyframes pulseOnce {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 0px #fbbf24; }
-  50% { transform: scale(1.03); box-shadow: 0 0 24px #fbbf24; }
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 #fbbf24; }
+  50%       { transform: scale(1.03); box-shadow: 0 0 24px #fbbf24; }
 }
-
 @keyframes bounceX {
   0%, 100% { transform: translateX(0); opacity: 1; }
-  50% { transform: translateX(4px); opacity: 0.6; }
+  50%       { transform: translateX(4px); opacity: 0.6; }
 }
-
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 @keyframes confettiFall {
-  0% { top: -20px; opacity: 1; transform: rotate(0deg) translateX(0); }
+  0%   { top: -20px; opacity: 1; transform: rotate(0deg) translateX(0); }
   100% { top: 110vh; opacity: 0; transform: rotate(720deg) translateX(calc(var(--drift, 50px) - 25px)); }
 }

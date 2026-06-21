@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { fetchBilan } from '../lib/api'
 import { COTISATION_TOTALE, NB_PARTICIPANTS } from '../lib/constants'
 import type { ApiBilan } from '../lib/types'
@@ -26,16 +26,20 @@ export function SectionBilan() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true)
+    setError(null)
     fetchBilan()
-      .then((d) => { setData(d); setError(null) })
+      .then((d) => setData(d))
       .catch(() => setError('Erreur lors du chargement du bilan.'))
       .finally(() => setLoading(false))
   }, [])
 
+  useEffect(() => { load() }, [load])
+
   if (loading) return <Spinner />
-  if (error) return <ErrorMsg message={error} />
-  if (!data?.success) return <ErrorMsg message="Données indisponibles." />
+  if (error) return <ErrorMsg message={error} onRetry={load} />
+  if (!data?.success) return <ErrorMsg message="Données indisponibles." onRetry={load} />
 
   const gains = data.gainsTotal ?? 0
   const cagnotte = data.cagnotte ?? 0
@@ -49,31 +53,31 @@ export function SectionBilan() {
     <div className="space-y-3">
       <h2 className="text-2xl font-bold text-yellow-400">📊 BILAN DU SYNDICAT</h2>
 
-      <Card className="bg-green-900/50 border-green-600">
+      <Card className="bg-green-900/40 border-green-700/60">
         <p className="text-sm text-green-300 font-bold mb-1">💸 Gain déjà distribué depuis le 1er juin</p>
         <p className="text-3xl font-bold text-green-400">{distribue.toFixed(2)}€</p>
         <p className="text-xs text-gray-400 mt-1">Montant total versé aux {NB_PARTICIPANTS} participants</p>
       </Card>
 
-      <Card className="bg-blue-900/50 border-blue-600">
+      <Card className="bg-blue-900/40 border-blue-700/60">
         <p className="text-sm text-blue-300 font-bold mb-1">🏆 Gain total annuel remporté</p>
         <p className="text-3xl font-bold text-blue-300">{gains.toFixed(2)}€</p>
         <p className="text-xs text-gray-400 mt-1">
-          Dont <span className="text-yellow-300 font-bold">{cagnotte.toFixed(2)}€</span> en attente de distribution (cagnotte)
+          Dont <span className="text-yellow-300 font-bold">{cagnotte.toFixed(2)}€</span> en attente (cagnotte)
         </p>
       </Card>
 
-      <Card className="bg-red-900/50 border-red-600">
+      <Card className="bg-red-900/40 border-red-700/60">
         <p className="text-sm text-red-300 font-bold mb-1">💳 Solde actuel du syndicat</p>
         <p className="text-3xl font-bold text-red-300">{(gains - COTISATION_TOTALE).toFixed(2)}€</p>
         <p className="text-xs text-gray-400 mt-1">Gains totaux − Cotisation (13 × 180€ = 2 340€)</p>
       </Card>
 
       <div className="grid grid-cols-2 gap-3">
-        <KpiCard label="Tirages joués" value={String(tirages)} color="text-purple-300" bg="bg-purple-900/50" border="border-purple-600" />
-        <KpiCard label="ROI" value={roi + '%'} color="text-yellow-300" bg="bg-yellow-900/50" border="border-yellow-600" />
-        <KpiCard label="Gain moyen / tirage" value={gainMoyen + '€'} color="text-gray-200" bg="bg-gray-800" border="border-gray-600" />
-        <KpiCard label="Gain par participant" value={gainParPart + '€'} color="text-gray-200" bg="bg-gray-800" border="border-gray-600" />
+        <KpiCard label="Tirages joués" value={String(tirages)} color="text-purple-300" bg="bg-purple-900/40" border="border-purple-700/50" />
+        <KpiCard label="ROI" value={roi + '%'} color="text-yellow-300" bg="bg-yellow-900/40" border="border-yellow-700/50" />
+        <KpiCard label="Gain moyen / tirage" value={gainMoyen + '€'} color="text-gray-200" bg="bg-gray-800/60" border="border-gray-600/50" />
+        <KpiCard label="Gain par participant" value={gainParPart + '€'} color="text-gray-200" bg="bg-gray-800/60" border="border-gray-600/50" />
       </div>
     </div>
   )

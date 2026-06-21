@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { fetchStats } from '../lib/api'
 import { GRILLES, CHANCES } from '../lib/constants'
 import type { ApiStats, Tirage } from '../lib/types'
-import { Spinner, ErrorMsg, Card, Badge } from '../components/ui'
+import { Spinner, ErrorMsg, Card, Badge, EmptyState } from '../components/ui'
 
 interface LigneGagnante {
   date: string
@@ -65,15 +65,19 @@ export function SectionHistorique() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true)
+    setError(null)
     fetchStats()
-      .then((d) => { setData(d); setError(null) })
-      .catch(() => setError('Erreur lors du chargement de l\'historique.'))
+      .then((d) => setData(d))
+      .catch(() => setError("Erreur lors du chargement de l'historique."))
       .finally(() => setLoading(false))
   }, [])
 
+  useEffect(() => { load() }, [load])
+
   if (loading) return <Spinner />
-  if (error) return <ErrorMsg message={error} />
+  if (error) return <ErrorMsg message={error} onRetry={load} />
 
   const lignes = data?.historique ? buildLignesGagnantes(data.historique) : []
   const totalGains = lignes.reduce((s, l) => s + l.gain, 0)
@@ -88,11 +92,11 @@ export function SectionHistorique() {
       </div>
 
       {lignes.length === 0 ? (
-        <Card className="text-center py-12">
-          <p className="text-4xl mb-3">🎰</p>
-          <p className="text-gray-400">Aucun gain pour le moment.</p>
-          <p className="text-gray-500 text-sm mt-2">Les gains s'afficheront ici au fur et à mesure.</p>
-        </Card>
+        <EmptyState
+          icon="🎰"
+          title="Aucun gain pour le moment"
+          subtitle="Les gains s'afficheront ici au fur et à mesure."
+        />
       ) : (
         <>
           <div className="space-y-3">

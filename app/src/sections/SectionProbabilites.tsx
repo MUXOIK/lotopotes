@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { fetchStats } from '../lib/api'
 import type { ApiStats, Tirage } from '../lib/types'
-import { Spinner, ErrorMsg, Card } from '../components/ui'
+import { Spinner, ErrorMsg, Card, EmptyState } from '../components/ui'
 
 function buildStats(tirages: Tirage[]) {
   const freqNums: Record<number, number> = {}
@@ -43,15 +43,19 @@ export function SectionProbabilites() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true)
+    setError(null)
     fetchStats()
-      .then((d) => { setData(d); setError(null) })
+      .then((d) => setData(d))
       .catch(() => setError('Erreur lors du chargement des statistiques.'))
       .finally(() => setLoading(false))
   }, [])
 
+  useEffect(() => { load() }, [load])
+
   if (loading) return <Spinner />
-  if (error) return <ErrorMsg message={error} />
+  if (error) return <ErrorMsg message={error} onRetry={load} />
 
   const tirages = data?.historique ?? []
   const nb = tirages.length
@@ -60,11 +64,11 @@ export function SectionProbabilites() {
     return (
       <div className="space-y-3">
         <h2 className="text-2xl font-bold text-yellow-400">🎯 PROBABILITÉS & STATS</h2>
-        <Card className="text-center py-12">
-          <p className="text-4xl mb-3">🎲</p>
-          <p className="text-gray-400">Pas encore assez de données.</p>
-          <p className="text-gray-500 text-sm mt-2">Les statistiques s'enrichiront à partir du 1er juin 2026.</p>
-        </Card>
+        <EmptyState
+          icon="🎲"
+          title="Pas encore assez de données"
+          subtitle="Les statistiques s'enrichiront à partir du 1er juin 2026."
+        />
       </div>
     )
   }
