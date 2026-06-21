@@ -27,6 +27,8 @@ let dataScrapeJeSha = null;    // SHA de data-scrape.json
 let allGains = [];             // [{date, grille, tirage, gain}, ...]
 let distribution = {};         // {PARTICIPANT: {gains, solde}, ...}
 let cagnotte = 0;              // Somme des gains
+let nombreTirages = 9;         // Nombre total de tirages depuis le 1er juin
+let dataCountTiragesSha = null; // SHA de data-count-tirages.json
 
 PARTICIPANTS.forEach(p => { distribution[p] = {gains:0,solde:-180}; });
 
@@ -144,6 +146,27 @@ async function chargerScrapeData() {
   } catch(e) { console.log('[DB] ⚠️  Erreur chargement scrape: '+e.message); tirageScrape = null; }
 }
 
+async function chargerCompteurTirages() {
+  console.log('[DB] Chargement data-count-tirages.json (compteur)...');
+  if (!GITHUB_TOKEN) { 
+    console.log('[DB] ⚠️  GITHUB_TOKEN vide');
+    nombreTirages = 9;
+    return; 
+  }
+  try {
+    const res = await githubRequest('GET','data-count-tirages.json');
+    if (res.ok && res.data.content) {
+      const d = JSON.parse(Buffer.from(res.data.content,'base64').toString('utf8'));
+      nombreTirages = d.nombre_tirages || 9;
+      dataCountTiragesSha = res.data.sha;
+      console.log('[DB] ✅ Compteur chargé: '+nombreTirages+' tirages');
+    } else {
+      console.log('[DB] ⚠️  data-count-tirages.json pas encore créé');
+      nombreTirages = 9;
+    }
+  } catch(e) { console.log('[DB] ⚠️  Erreur chargement compteur: '+e.message); nombreTirages = 9; }
+}
+
 // ============================================
 // SAUVEGARDE VERS GITHUB
 // ============================================
@@ -167,6 +190,15 @@ async function ajouterAuHistorique(tirage, gainsDetails) {
     const res = await githubRequest('PUT','data.json',{message:'gain '+gainTotal+'€ le '+tirage.date.split('T')[0],content,...(dataHistoriqueSha?{sha:dataHistoriqueSha}:{})});
     if (res.ok) { dataHistoriqueSha = res.data.content.sha; console.log('[DB] ✅ data.json mis à jour avec gain'); }
   } catch(e) { console.log('[DB] ❌ Erreur ajout historique: '+e.message); }
+}
+
+async function sauvegarderCompteur() {
+  if (!GITHUB_TOKEN) return;
+  try {
+    const content = Buffer.from(JSON.stringify({nombre_tirages:nombreTirages},null,2)).toString('base64');
+    const res = await githubRequest('PUT','data-count-tirages.json',{message:'tirage '+nombreTirages+' le '+new Date().toISOString().split('T')[0],content,...(dataCountTiragesSha?{sha:dataCountTiragesSha}:{})});
+    if (res.ok) { dataCountTiragesSha = res.data.content.sha; console.log('[DB] ✅ Compteur sauvegardé: '+nombreTirages+' tirages'); }
+  } catch(e) { console.log('[DB] ❌ Erreur sauvegarde compteur: '+e.message); }
 }
 
 // ============================================
@@ -381,8 +413,15 @@ app.get('/api/loto-complet', async (req, res) => {
   tirage.gainTotal = total;
   tirage.gainsDetails = gainsDetails;
   
+  // Incrémenter le compteur si c'est un nouveau tirage
+  const previousDate = tirageScrape ? tirageScrape.date : null;
   tirageScrape = tirage;
   cacheExpiry = prochainTirage();
+  
+  if (!previousDate || previousDate !== tirage.date) {
+    nombreTirages++;
+    await sauvegarderCompteur();
+  }
   
   // Sauvegarder dans data-scrape.json
   await sauvegarderScrape(tirage);
@@ -401,7 +440,7 @@ app.get('/api/stats', async (req, res) => {
 
 app.get('/api/bilan', async (req, res) => {
   const gainsTotal = allGains.reduce((sum, t) => sum + (t.gains || 0), 0);
-  const tiragesEffectues = allGains.length;
+  const tiragesEffectues = nombreTirages;
   res.json({success:true,gainsTotal,tiragesEffectues,distribution,cagnotte});
 });
 
@@ -418,6 +457,7 @@ app.listen(PORT, async () => {
   console.log('✅ Port '+PORT);
   await chargerHistoriqueDonnees();
   await chargerScrapeData();
+  await chargerCompteurTirages();
   
   // Pré-remplir le cache avec le tirage scrappé
   if (tirageScrape) {
