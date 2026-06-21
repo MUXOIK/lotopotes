@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { fetchStats } from '../lib/api'
 import { GRILLES, CHANCES } from '../lib/constants'
 import type { ApiStats, Tirage } from '../lib/types'
-import { Spinner, ErrorMsg, Card, Badge, EmptyState } from '../components/ui'
+import { LoadingWithHint, ErrorMsg, Card, Badge, EmptyState } from '../components/ui'
 
 interface LigneGagnante {
   date: string
@@ -76,7 +76,7 @@ export function SectionHistorique() {
 
   useEffect(() => { load() }, [load])
 
-  if (loading) return <Spinner />
+  if (loading) return <LoadingWithHint />
   if (error) return <ErrorMsg message={error} onRetry={load} />
 
   const lignes = data?.historique ? buildLignesGagnantes(data.historique) : []

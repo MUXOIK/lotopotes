@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { fetchStats } from '../lib/api'
 import type { ApiStats, Tirage } from '../lib/types'
-import { Spinner, ErrorMsg, Card, EmptyState } from '../components/ui'
+import { LoadingWithHint, ErrorMsg, Card, EmptyState } from '../components/ui'
 
 function buildStats(tirages: Tirage[]) {
   const freqNums: Record<number, number> = {}
@@ -54,7 +54,7 @@ export function SectionProbabilites() {
 
   useEffect(() => { load() }, [load])
 
-  if (loading) return <Spinner />
+  if (loading) return <LoadingWithHint />
   if (error) return <ErrorMsg message={error} onRetry={load} />
 
   const tirages = data?.historique ?? []

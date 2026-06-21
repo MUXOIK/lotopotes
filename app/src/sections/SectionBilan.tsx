@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { fetchBilan } from '../lib/api'
 import { COTISATION_TOTALE, NB_PARTICIPANTS } from '../lib/constants'
 import type { ApiBilan } from '../lib/types'
-import { Spinner, ErrorMsg, Card } from '../components/ui'
+import { LoadingWithHint, ErrorMsg, Card } from '../components/ui'
 
 interface KpiProps {
   label: string
@@ -37,7 +37,7 @@ export function SectionBilan() {
 
   useEffect(() => { load() }, [load])
 
-  if (loading) return <Spinner />
+  if (loading) return <LoadingWithHint />
   if (error) return <ErrorMsg message={error} onRetry={load} />
   if (!data?.success) return <ErrorMsg message="Données indisponibles." onRetry={load} />
 
