@@ -22,7 +22,7 @@ Deno.serve(async (req: Request) => {
   try {
     // Validate admin secret from request header
     const adminSecret = req.headers.get("X-Admin-Secret");
-    const expectedSecret = Deno.env.get("ADMIN_SECRET");
+    const expectedSecret = Deno.env.get("ADMIN_SECRET") ?? Deno.env.get("APIsecret");
     if (!expectedSecret || adminSecret !== expectedSecret) {
       return json({ error: "Unauthorized" }, 401);
     }
