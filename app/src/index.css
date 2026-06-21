@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+@theme {
+  --color-gray-950: #030712;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+  }
+  .overflow-x-auto::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer utilities {
+  .animate-pop {
+    animation: popIn 0.4s ease-out;
+  }
+  .animate-shake {
+    animation: shake 0.4s ease-in-out;
+  }
+  .animate-pulse-once {
+    animation: pulseOnce 0.6s ease-in-out 3;
+  }
+  .animate-bounce-x {
+    animation: bounceX 1s ease-in-out infinite;
+  }
+}
+
+@keyframes popIn {
+  0% { transform: scale(0) rotate(-15deg); opacity: 0; }
+  80% { transform: scale(1.1) rotate(3deg); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}
+
+@keyframes pulseOnce {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0px #fbbf24; }
+  50% { transform: scale(1.03); box-shadow: 0 0 24px #fbbf24; }
+}
+
+@keyframes bounceX {
+  0%, 100% { transform: translateX(0); opacity: 1; }
+  50% { transform: translateX(4px); opacity: 0.6; }
+}
+
+@keyframes confettiFall {
+  0% { top: -20px; opacity: 1; transform: rotate(0deg) translateX(0); }
+  100% { top: 110vh; opacity: 0; transform: rotate(720deg) translateX(calc(var(--drift, 50px) - 25px)); }
+}
