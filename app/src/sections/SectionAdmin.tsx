@@ -61,6 +61,26 @@ function AdminLogin({ onLogin }: { onLogin: () => void }) {
   )
 }
 
+function ServerStatus({ onRetry, loading }: { onRetry: () => void; loading: boolean }) {
+  return (
+    <div className="rounded-xl bg-orange-900/30 border border-orange-700 p-4 text-center">
+      <p className="text-2xl mb-2">😴</p>
+      <p className="text-orange-300 font-bold text-sm mb-1">Serveur en veille (Render)</p>
+      <p className="text-gray-400 text-xs mb-4">
+        Le serveur se met en veille après 15 min d'inactivité.<br />
+        Le réveil prend environ 30 secondes.
+      </p>
+      <button
+        onClick={onRetry}
+        disabled={loading}
+        className="w-full p-3 rounded-lg bg-orange-700 hover:bg-orange-600 disabled:opacity-60 text-white font-bold text-sm transition"
+      >
+        {loading ? '⏳ Connexion en cours...' : '🔄 Réessayer la connexion'}
+      </button>
+    </div>
+  )
+}
+
 function AdminPanel({ onLogout }: { onLogout: () => void }) {
   const [montant, setMontant] = useState('')
   const [note, setNote] = useState('')
@@ -70,9 +90,13 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
   const [latestPaiement, setLatestPaiement] = useState<Paiement | null>(null)
   const [virements, setVirements] = useState<Record<string, Virement>>({})
 
+  const [sysLoading, setSysLoading] = useState(true)
+  const [sysOffline, setSysOffline] = useState(false)
   const [sysInfo, setSysInfo] = useState<string | null>(null)
-  const [scrapingResult, setScrapingResult] = useState<string | null>(null)
-  const [scrapingLoading, setScrapingLoading] = useState(false)
+
+  const [checkLoading, setCheckLoading] = useState(false)
+  const [checkOffline, setCheckOffline] = useState(false)
+  const [checkResult, setCheckResult] = useState<string | null>(null)
 
   const loadLatestPaiementAndVirements = useCallback(async () => {
     const { data: paiements } = await supabase
@@ -102,36 +126,42 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
     }
   }, [])
 
-  useEffect(() => {
-    loadLatestPaiementAndVirements()
-    loadSysInfo()
-  }, [loadLatestPaiementAndVirements])
-
   const loadSysInfo = async () => {
+    setSysLoading(true)
+    setSysOffline(false)
+    setSysInfo(null)
     try {
       const data = await fetchTest()
       setSysInfo(
         `Serveur: ${data.ok ? '✅ En ligne' : '❌ Hors ligne'} | Tirages: ${data.allGains} | Cagnotte: ${data.cagnotte}€`
       )
     } catch {
-      setSysInfo('❌ Impossible de contacter le serveur')
+      setSysOffline(true)
+    } finally {
+      setSysLoading(false)
     }
   }
 
-  const forceScraping = async () => {
-    setScrapingLoading(true)
-    setScrapingResult(null)
+  useEffect(() => {
+    loadLatestPaiementAndVirements()
+    loadSysInfo()
+  }, [loadLatestPaiementAndVirements])
+
+  const checkServeur = async () => {
+    setCheckLoading(true)
+    setCheckResult(null)
+    setCheckOffline(false)
     try {
       const data = await fetchTest()
-      setScrapingResult(
+      setCheckResult(
         data.ok
           ? `✅ Serveur OK — ${data.allGains} tirages en mémoire, cagnotte ${data.cagnotte}€`
           : '❌ Serveur indisponible'
       )
     } catch {
-      setScrapingResult('❌ Erreur de connexion au serveur')
+      setCheckOffline(true)
     } finally {
-      setScrapingLoading(false)
+      setCheckLoading(false)
     }
   }
 
@@ -192,17 +222,23 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
       <Card className="border-blue-700 bg-blue-900/20">
         <h3 className="text-base font-bold text-blue-300 mb-1">🔄 Vérification serveur</h3>
         <p className="text-xs text-gray-400 mb-3">Vérifier l'état du serveur backend.</p>
-        <button
-          onClick={forceScraping}
-          disabled={scrapingLoading}
-          className="w-full p-3 rounded-lg bg-blue-700 hover:bg-blue-600 disabled:opacity-60 text-white font-bold transition"
-        >
-          {scrapingLoading ? '⏳ En cours...' : '🔄 Vérifier le serveur'}
-        </button>
-        {scrapingResult && (
-          <p className={`mt-2 text-sm ${scrapingResult.startsWith('✅') ? 'text-green-400' : 'text-red-400'}`}>
-            {scrapingResult}
-          </p>
+        {checkOffline ? (
+          <ServerStatus onRetry={checkServeur} loading={checkLoading} />
+        ) : (
+          <>
+            <button
+              onClick={checkServeur}
+              disabled={checkLoading}
+              className="w-full p-3 rounded-lg bg-blue-700 hover:bg-blue-600 disabled:opacity-60 text-white font-bold transition"
+            >
+              {checkLoading ? '⏳ En cours...' : '🔄 Vérifier le serveur'}
+            </button>
+            {checkResult && (
+              <p className={`mt-2 text-sm ${checkResult.startsWith('✅') ? 'text-green-400' : 'text-red-400'}`}>
+                {checkResult}
+              </p>
+            )}
+          </>
         )}
       </Card>
 
@@ -288,16 +324,23 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
       {/* Informations système */}
       <Card>
         <h3 className="text-base font-bold text-gray-300 mb-3">ℹ️ Informations système</h3>
-        {sysInfo ? (
+        {sysLoading ? (
+          <Spinner />
+        ) : sysOffline ? (
+          <ServerStatus onRetry={loadSysInfo} loading={sysLoading} />
+        ) : sysInfo ? (
           <div className="text-sm text-gray-400 space-y-1">
             {sysInfo.split(' | ').map((line, i) => (
               <div key={i}>{line}</div>
             ))}
-            <button onClick={loadSysInfo} className="mt-2 text-xs text-blue-400 hover:underline">Actualiser</button>
+            <button
+              onClick={loadSysInfo}
+              className="mt-3 w-full p-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm font-bold transition"
+            >
+              🔄 Actualiser
+            </button>
           </div>
-        ) : (
-          <Spinner />
-        )}
+        ) : null}
       </Card>
     </div>
   )
