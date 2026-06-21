@@ -3,7 +3,7 @@ import { fetchLotoComplet } from '../lib/api'
 import { GRILLES, CHANCES, COTISATION_TOTALE } from '../lib/constants'
 import type { ApiLotoComplet } from '../lib/types'
 import { Boule } from '../components/Boule'
-import { Spinner, ErrorMsg, Card, EmptyState } from '../components/ui'
+import { LoadingWithHint, ErrorMsg, Card, EmptyState } from '../components/ui'
 import { Confetti } from '../components/Confetti'
 
 export function SectionAccueil() {
@@ -61,7 +61,7 @@ export function SectionAccueil() {
       <Card>
         <h2 className="text-xl font-bold text-yellow-400 mb-3">🎰 DERNIERS TIRAGES FDJ</h2>
         {loading ? (
-          <Spinner />
+          <LoadingWithHint />
         ) : error ? (
           <ErrorMsg message={error} onRetry={load} />
         ) : data?.tirage ? (

@@ -1,9 +1,28 @@
+import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
 
 export function Spinner() {
   return (
     <div className="flex justify-center items-center py-12">
       <div className="w-10 h-10 border-4 border-gray-700 border-t-yellow-400 rounded-full animate-spin" />
+    </div>
+  )
+}
+
+export function LoadingWithHint() {
+  const [slow, setSlow] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setSlow(true), 7000)
+    return () => clearTimeout(t)
+  }, [])
+  return (
+    <div className="text-center">
+      <Spinner />
+      {slow && (
+        <p className="text-xs text-amber-400 mt-2 animate-pulse">
+          Le serveur se reveille... (jusqu'a ~50 secondes au demarrage)
+        </p>
+      )}
     </div>
   )
 }
