@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { fetchTest } from '../lib/api'
+import { fetchTest, fetchBilan } from '../lib/api'
 import { PARTICIPANTS, ADMIN_PASSWORD, NB_PARTICIPANTS } from '../lib/constants'
 import type { Paiement, Virement } from '../lib/types'
 import { Spinner, Card } from '../components/ui'
@@ -131,9 +131,9 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
     setSysOffline(false)
     setSysInfo(null)
     try {
-      const data = await fetchTest()
+      const [test, bilan] = await Promise.all([fetchTest(), fetchBilan()])
       setSysInfo(
-        `Serveur: ${data.ok ? '✅ En ligne' : '❌ Hors ligne'} | Tirages: ${data.allGains} | Cagnotte: ${data.cagnotte}€`
+        `Serveur: ${test.ok ? '✅ En ligne' : '❌ Hors ligne'} | Tirages joués: ${bilan.tiragesEffectues} | Tirages gagnants: ${test.allGains} | Cagnotte: ${test.cagnotte}€`
       )
     } catch {
       setSysOffline(true)
@@ -152,10 +152,10 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
     setCheckResult(null)
     setCheckOffline(false)
     try {
-      const data = await fetchTest()
+      const [test, bilan] = await Promise.all([fetchTest(), fetchBilan()])
       setCheckResult(
-        data.ok
-          ? `✅ Serveur OK — ${data.allGains} tirages en mémoire, cagnotte ${data.cagnotte}€`
+        test.ok
+          ? `✅ Serveur OK — ${bilan.tiragesEffectues} tirages joués, ${test.allGains} gagnants, cagnotte ${test.cagnotte}€`
           : '❌ Serveur indisponible'
       )
     } catch {
