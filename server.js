@@ -4,15 +4,35 @@ const https = require('https');
 const app = express();
 app.use(cors());
 
+// ============================================
+// CONFIGURATION
+// ============================================
+
 const GRILLES = [[7,12,23,34,45],[6,15,28,39,48],[3,18,31,42,49],[8,19,32,41,46],[5,22,29,35,44]];
 const CHANCES = [9,6,4,1,7];
 const PARTICIPANTS = ['ANOUFA Fabienne & Moïse','BELLALOU Martine & Patrick','GRINAL Danielle & Serge','HOCHBERG Nathalie & Bruno','JURIS Virgine & Frédéric','KIMAN Laurence & Didier','LEVIN Gabrielle & Didier','MESGUICH Corinne & Jean Philippe','OIKNINE Muriel & Aaron','PARTOUCHE Sylvie & Serge','SITBON Leslie & OHAYON Gilles','TEMAN Eva & FINKELSTEIN Philippe','WEITZMANN Dalia & Jacques'];
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_REPO = process.env.GITHUB_REPO || 'MUXOIK/lotopotes';
 
-let allTirages = [], distribution = {}, cagnotte = 0;
-let tirageCache = null, cacheExpiry = null, dataFileSha = null;
+// ============================================
+// STATE - Deux sources de données distinctes
+// ============================================
+
+let tirageScrape = null;      // Tirage du jour (data-scrape.json)
+let cacheExpiry = null;        // Quand le cache expire
+let dataHistoriqueSha = null;  // SHA de data.json
+let dataScrapeJeSha = null;    // SHA de data-scrape.json
+
+// Variables pour historique et distribution (chargées de data.json)
+let allGains = [];             // [{date, grille, tirage, gain}, ...]
+let distribution = {};         // {PARTICIPANT: {gains, solde}, ...}
+let cagnotte = 0;              // Somme des gains
+
 PARTICIPANTS.forEach(p => { distribution[p] = {gains:0,solde:-180}; });
+
+// ============================================
+// UTILITAIRES
+// ============================================
 
 function sameNums(a, b) {
   if (!a || !b || a.length !== b.length) return false;
@@ -74,38 +94,84 @@ function calculerGainsTirage(t) {
   return {total, gainsDetails};
 }
 
-async function sauvegarder() {
-  if (!GITHUB_TOKEN) return;
-  try {
-    const content = Buffer.from(JSON.stringify({allTirages,distribution,cagnotte,updatedAt:new Date().toISOString()},null,2)).toString('base64');
-    const res = await githubRequest('PUT','data.json',{message:'data '+new Date().toISOString().split('T')[0],content,...(dataFileSha?{sha:dataFileSha}:{})});
-    if (res.ok) { dataFileSha = res.data.content.sha; console.log('[DB] ✅ Sauvegardé'); }
-  } catch(e) { console.log('[DB] ❌ Erreur: '+e.message); }
-}
+// ============================================
+// CHARGEMENT DEPUIS GITHUB
+// ============================================
 
-async function chargerDonnees() {
-  console.log('[DB] Chargement depuis GitHub...');
+async function chargerHistoriqueDonnees() {
+  console.log('[DB] Chargement data.json (historique gains)...');
   if (!GITHUB_TOKEN) { 
-    console.log('[DB] ⚠️ GITHUB_TOKEN vide - données locales uniquement');
-    PARTICIPANTS.forEach(p=>{distribution[p]={gains:0,solde:-180};}); 
+    console.log('[DB] ⚠️  GITHUB_TOKEN vide');
+    allGains = [];
+    distribution = {};
+    PARTICIPANTS.forEach(p=>{distribution[p]={gains:0,solde:-180};});
     return; 
   }
   try {
     const res = await githubRequest('GET','data.json');
     if (res.ok && res.data.content) {
       const d = JSON.parse(Buffer.from(res.data.content,'base64').toString('utf8'));
-      allTirages = d.allTirages || [];
+      allGains = d.allTirages || [];
       distribution = d.distribution || {};
       cagnotte = d.cagnotte || 0;
-      dataFileSha = res.data.sha;
+      dataHistoriqueSha = res.data.sha;
       PARTICIPANTS.forEach(p => { if (!distribution[p]) distribution[p]={gains:0,solde:-180}; });
-      console.log('[DB] ✅ Chargé: '+allTirages.length+' tirages, cagnotte '+cagnotte.toFixed(2)+'€');
+      console.log('[DB] ✅ Historique chargé: '+allGains.length+' tirages gagnants, cagnotte '+cagnotte.toFixed(2)+'€');
     } else {
-      console.log('[DB] ❌ Erreur GitHub');
-      PARTICIPANTS.forEach(p=>{distribution[p]={gains:0,solde:-180};});
+      console.log('[DB] ❌ Erreur GitHub historique');
     }
   } catch(e) { console.log('[DB] ❌ Erreur: '+e.message); }
 }
+
+async function chargerScrapeData() {
+  console.log('[DB] Chargement data-scrape.json (tirage du jour)...');
+  if (!GITHUB_TOKEN) { 
+    console.log('[DB] ⚠️  GITHUB_TOKEN vide');
+    tirageScrape = null;
+    return; 
+  }
+  try {
+    const res = await githubRequest('GET','data-scrape.json');
+    if (res.ok && res.data.content) {
+      const d = JSON.parse(Buffer.from(res.data.content,'base64').toString('utf8'));
+      tirageScrape = d.tirage || null;
+      dataScrapeJeSha = res.data.sha;
+      if (tirageScrape) console.log('[DB] ✅ Tirage scrappé chargé: '+tirageScrape.date.split('T')[0]);
+    } else {
+      console.log('[DB] ⚠️  data-scrape.json pas encore créé');
+      tirageScrape = null;
+    }
+  } catch(e) { console.log('[DB] ⚠️  Erreur chargement scrape: '+e.message); tirageScrape = null; }
+}
+
+// ============================================
+// SAUVEGARDE VERS GITHUB
+// ============================================
+
+async function sauvegarderScrape(tirage) {
+  if (!GITHUB_TOKEN) return;
+  try {
+    const content = Buffer.from(JSON.stringify({tirage},null,2)).toString('base64');
+    const res = await githubRequest('PUT','data-scrape.json',{message:'scrape '+new Date().toISOString().split('T')[0],content,...(dataScrapeJeSha?{sha:dataScrapeJeSha}:{})});
+    if (res.ok) { dataScrapeJeSha = res.data.content.sha; console.log('[DB] ✅ data-scrape.json sauvegardé'); }
+  } catch(e) { console.log('[DB] ❌ Erreur sauvegarde scrape: '+e.message); }
+}
+
+async function ajouterAuHistorique(tirage, gainsDetails) {
+  if (!GITHUB_TOKEN || gainsDetails.length === 0) return;
+  try {
+    allGains.push(tirage);
+    const gainTotal = gainsDetails.reduce((sum, g) => sum + g.gain, 0);
+    cagnotte += gainTotal;
+    const content = Buffer.from(JSON.stringify({allTirages:allGains,distribution,cagnotte,updatedAt:new Date().toISOString()},null,2)).toString('base64');
+    const res = await githubRequest('PUT','data.json',{message:'gain '+gainTotal+'€ le '+tirage.date.split('T')[0],content,...(dataHistoriqueSha?{sha:dataHistoriqueSha}:{})});
+    if (res.ok) { dataHistoriqueSha = res.data.content.sha; console.log('[DB] ✅ data.json mis à jour avec gain'); }
+  } catch(e) { console.log('[DB] ❌ Erreur ajout historique: '+e.message); }
+}
+
+// ============================================
+// SCRAPING
+// ============================================
 
 function httpGet(host, path) {
   return new Promise((resolve) => {
@@ -240,17 +306,23 @@ function prochainTirage() {
 }
 
 function cacheValide() {
-  return tirageCache && cacheExpiry && new Date() < cacheExpiry;
+  return tirageScrape && cacheExpiry && new Date() < cacheExpiry;
 }
+
+// ============================================
+// ENDPOINTS API
+// ============================================
 
 app.get('/api/loto-complet', async (req, res) => {
   if (cacheValide()) {
-    return res.json({success:true,tirage:tirageCache,historique:allTirages,distribution,cagnotte});
+    const {total, gainsDetails} = calculerGainsTirage(tirageScrape);
+    return res.json({success:true,tirage:{...tirageScrape,gainTotal:total,gainsDetails},historique:allGains,distribution,cagnotte});
   }
   
   const mainResp = await httpGet('www.secretsdujeu.com', '/page/jeux_loto_resultats.html');
   if (!mainResp.ok) {
-    return res.json({success:false,tirage:tirageCache,historique:allTirages,distribution,cagnotte,error:'Erreur scraping'});
+    const {total, gainsDetails} = tirageScrape ? calculerGainsTirage(tirageScrape) : {total:0,gainsDetails:[]};
+    return res.json({success:false,tirage:tirageScrape?{...tirageScrape,gainTotal:total,gainsDetails}:null,historique:allGains,distribution,cagnotte,error:'Erreur scraping'});
   }
   
   const html = mainResp.data;
@@ -273,7 +345,8 @@ app.get('/api/loto-complet', async (req, res) => {
   
   const m = /combinaison gagnante[^0-9]*(\d+)-(\d+)-(\d+)-(\d+)-(\d+)[^0-9]*num.ro Chance est le (\d+)/.exec(html);
   if (!m) {
-    return res.json({success:false,tirage:tirageCache,historique:allTirages,distribution,cagnotte,error:'Numéros non trouvés'});
+    const {total, gainsDetails} = tirageScrape ? calculerGainsTirage(tirageScrape) : {total:0,gainsDetails:[]};
+    return res.json({success:false,tirage:tirageScrape?{...tirageScrape,gainTotal:total,gainsDetails}:null,historique:allGains,distribution,cagnotte,error:'Numéros non trouvés'});
   }
   
   const nums = [1,2,3,4,5].map(i => parseInt(m[i]));
@@ -295,54 +368,63 @@ app.get('/api/loto-complet', async (req, res) => {
   
   const tirage = {nums, chance, nums2, date, rapportGains: rg1, rapportGains2: rg2};
   
-  // FALLBACK : Si scraping échoue (zéros), reprendre l'historique
-  const dateStr = date.split('T')[0];
-  const existant = allTirages.find(t =>
-    t.date.split('T')[0] === dateStr &&
-    sameNums(t.nums, nums) &&
-    sameNums(t.nums2, nums2)
-  );
-  
-  if (existant && Object.values(tirage.rapportGains).every(v => v === 0)) {
-    tirage.rapportGains = existant.rapportGains || tirage.rapportGains;
-    tirage.rapportGains2 = existant.rapportGains2 || tirage.rapportGains2;
+  // FALLBACK : Si scraping échoue, reprendre l'historique
+  if (allGains.length > 0 && Object.values(tirage.rapportGains).every(v => v === 0)) {
+    const dernierGain = allGains[allGains.length - 1];
+    if (sameNums(tirage.nums, dernierGain.nums) && sameNums(tirage.nums2, dernierGain.nums2)) {
+      tirage.rapportGains = dernierGain.rapportGains || tirage.rapportGains;
+      tirage.rapportGains2 = dernierGain.rapportGains2 || tirage.rapportGains2;
+    }
   }
   
   const {total, gainsDetails} = calculerGainsTirage(tirage);
-  tirage.gainsDetails = gainsDetails;
   tirage.gainTotal = total;
+  tirage.gainsDetails = gainsDetails;
   
-  tirageCache = tirage;
+  tirageScrape = tirage;
   cacheExpiry = prochainTirage();
   
-  res.json({success:true,tirage,historique:allTirages,distribution,cagnotte});
+  // Sauvegarder dans data-scrape.json
+  await sauvegarderScrape(tirage);
+  
+  // Si gains > 0, ajouter à data.json (historique)
+  if (total > 0) {
+    await ajouterAuHistorique(tirage, gainsDetails);
+  }
+  
+  res.json({success:true,tirage,historique:allGains,distribution,cagnotte});
 });
 
 app.get('/api/stats', async (req, res) => {
-  res.json({success:true,historique:allTirages,distribution,cagnotte,tirage:tirageCache});
+  res.json({success:true,historique:allGains,distribution,cagnotte});
 });
 
 app.get('/api/bilan', async (req, res) => {
-  const gainsTotal = allTirages.reduce((sum, t) => sum + (t.gains || 0), 0);
-  const tiragesEffectues = allTirages.length;
+  const gainsTotal = allGains.reduce((sum, t) => sum + (t.gains || 0), 0);
+  const tiragesEffectues = allGains.length;
   res.json({success:true,gainsTotal,tiragesEffectues,distribution,cagnotte});
 });
 
 app.get('/api/test', (req, res) => {
-  res.json({ok:true,allTirages:allTirages.length,cagnotte:cagnotte.toFixed(2),GITHUB_TOKEN:GITHUB_TOKEN?'✅':'❌'});
+  res.json({ok:true,allGains:allGains.length,cagnotte:cagnotte.toFixed(2),GITHUB_TOKEN:GITHUB_TOKEN?'✅':'❌'});
 });
+
+// ============================================
+// DÉMARRAGE
+// ============================================
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log('✅ Port '+PORT);
-  await chargerDonnees();
+  await chargerHistoriqueDonnees();
+  await chargerScrapeData();
   
-  // Pré-remplir le cache au démarrage (évite le scraping immédiat)
-  if (allTirages.length > 0) {
-    const dernierTirage = allTirages[allTirages.length - 1];
-    const {total, gainsDetails} = calculerGainsTirage(dernierTirage);
-    tirageCache = {...dernierTirage, gainTotal: total, gainsDetails};
+  // Pré-remplir le cache avec le tirage scrappé
+  if (tirageScrape) {
     cacheExpiry = prochainTirage();
-    console.log('[CACHE] ✅ Pré-rempli au démarrage avec tirage du '+dernierTirage.date.split('T')[0]);
+    const {total, gainsDetails} = calculerGainsTirage(tirageScrape);
+    tirageScrape.gainTotal = total;
+    tirageScrape.gainsDetails = gainsDetails;
+    console.log('[CACHE] ✅ Pré-rempli avec tirage du '+tirageScrape.date.split('T')[0]);
   }
 });
