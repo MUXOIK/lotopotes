@@ -958,6 +958,7 @@
         async function loadProbabilites() {
             try {
                 const resp = await fetch(`${BACKEND_URL}/api/stats`);
+                const data = await resp.json();
                 
                 document.getElementById('loading-probabilites').style.display = 'none';
                 document.getElementById('probabilites-content').style.display = 'block';

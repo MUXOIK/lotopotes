@@ -336,4 +336,13 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log('✅ Port '+PORT);
   await chargerDonnees();
+  
+  // Pré-remplir le cache au démarrage (évite le scraping immédiat)
+  if (allTirages.length > 0) {
+    const dernierTirage = allTirages[allTirages.length - 1];
+    const {total, gainsDetails} = calculerGainsTirage(dernierTirage);
+    tirageCache = {...dernierTirage, gainTotal: total, gainsDetails};
+    cacheExpiry = prochainTirage();
+    console.log('[CACHE] ✅ Pré-rempli au démarrage avec tirage du '+dernierTirage.date.split('T')[0]);
+  }
 });
