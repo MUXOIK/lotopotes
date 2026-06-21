@@ -1,26 +1,54 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { NB_PARTICIPANTS } from '../lib/constants'
 import type { Paiement } from '../lib/types'
 import { Spinner, ErrorMsg, Card, EmptyState } from '../components/ui'
 
+interface PaiementWithCount extends Paiement {
+  virementsEffectues: number
+}
+
 export function SectionPaiements() {
-  const [paiements, setPaiements] = useState<Paiement[]>([])
+  const [paiements, setPaiements] = useState<PaiementWithCount[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
-    const { data, error } = await supabase
+
+    const { data: paiementsData, error: pErr } = await supabase
       .from('paiements')
       .select('*')
       .order('created_at', { ascending: false })
 
-    if (error) {
+    if (pErr || !paiementsData) {
       setError('Erreur lors du chargement des paiements.')
-    } else {
-      setPaiements(data ?? [])
+      setLoading(false)
+      return
     }
+
+    // Load virement counts per paiement
+    const ids = paiementsData.map((p: Paiement) => p.id)
+    const { data: virementsData } = ids.length > 0
+      ? await supabase
+          .from('virements')
+          .select('paiement_id')
+          .in('paiement_id', ids)
+          .eq('effectue', true)
+      : { data: [] }
+
+    const countMap: Record<string, number> = {}
+    ;(virementsData ?? []).forEach((v: { paiement_id: string }) => {
+      countMap[v.paiement_id] = (countMap[v.paiement_id] ?? 0) + 1
+    })
+
+    setPaiements(
+      paiementsData.map((p: Paiement) => ({
+        ...p,
+        virementsEffectues: countMap[p.id] ?? 0,
+      }))
+    )
     setLoading(false)
   }, [])
 
@@ -57,6 +85,11 @@ export function SectionPaiements() {
                     })}
                   </div>
                   <div className="text-sm text-gray-300 mt-0.5 truncate">{p.note}</div>
+                  <div className="text-xs mt-1">
+                    <span className={p.virementsEffectues === NB_PARTICIPANTS ? 'text-green-500' : 'text-yellow-500'}>
+                      {p.virementsEffectues}/{NB_PARTICIPANTS} virements effectués
+                    </span>
+                  </div>
                 </div>
                 <div className="text-right flex-shrink-0">
                   <div className="text-xl font-bold text-green-400">{Number(p.montant).toFixed(2)}€</div>
@@ -71,7 +104,7 @@ export function SectionPaiements() {
           <div className="bg-green-950/60 rounded-xl p-4 border border-green-700/50 flex justify-between items-center">
             <div>
               <p className="font-bold text-green-300">Total distribué</p>
-              <p className="text-xs text-green-500 mt-0.5">{paiements.length} virement{paiements.length > 1 ? 's' : ''}</p>
+              <p className="text-xs text-green-500 mt-0.5">{paiements.length} paiement{paiements.length > 1 ? 's' : ''}</p>
             </div>
             <span className="text-2xl font-bold text-green-300">{total.toFixed(2)}€</span>
           </div>
