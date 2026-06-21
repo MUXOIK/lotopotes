@@ -5,6 +5,25 @@ import { PARTICIPANTS, ADMIN_PASSWORD, NB_PARTICIPANTS } from '../lib/constants'
 import type { Virement } from '../lib/types'
 import { Spinner, Card } from '../components/ui'
 
+// Admin writes go through the Edge Function — never the anon client
+const ADMIN_API_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-writes`
+const ADMIN_SECRET  = import.meta.env.VITE_ADMIN_SECRET as string
+
+async function adminFetch(action: string, body?: unknown) {
+  const resp = await fetch(`${ADMIN_API_URL}?action=${action}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      'X-Admin-Secret': ADMIN_SECRET,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  const data = await resp.json()
+  if (!resp.ok) throw new Error(data.error ?? `HTTP ${resp.status}`)
+  return data
+}
+
 function AdminLogin({ onLogin }: { onLogin: () => void }) {
   const [pwd, setPwd] = useState('')
   const [err, setErr] = useState(false)
@@ -54,7 +73,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
   const [scrapingLoading, setScrapingLoading] = useState(false)
 
   useEffect(() => {
-    // Charger les virements depuis Supabase
+    // Reads still use the anon client (SELECT policy remains open)
     supabase.from('virements').select('*').then(({ data }) => {
       if (data) {
         const map: Record<string, string> = {}
@@ -71,7 +90,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
     try {
       const data = await fetchTest()
       setSysInfo(
-        `Serveur: ${data.ok ? '✅ En ligne' : '❌ Hors ligne'} | Tirages en cache: ${data.allGains} | Cagnotte: ${data.cagnotte}€ | Token GitHub: ${data.GITHUB_TOKEN}`
+        `Serveur: ${data.ok ? '✅ En ligne' : '❌ Hors ligne'} | Tirages: ${data.allGains} | Cagnotte: ${data.cagnotte}€`
       )
     } catch {
       setSysInfo('❌ Impossible de contacter le serveur')
@@ -83,11 +102,11 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
     setScrapingResult(null)
     try {
       const data = await fetchTest()
-      if (data.ok) {
-        setScrapingResult(`✅ Serveur OK — ${data.allGains} tirages en mémoire, cagnotte ${data.cagnotte}€`)
-      } else {
-        setScrapingResult('❌ Serveur indisponible')
-      }
+      setScrapingResult(
+        data.ok
+          ? `✅ Serveur OK — ${data.allGains} tirages en mémoire, cagnotte ${data.cagnotte}€`
+          : '❌ Serveur indisponible'
+      )
     } catch {
       setScrapingResult('❌ Erreur de connexion au serveur')
     } finally {
@@ -102,43 +121,50 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
       return
     }
     setSaving(true)
-    const { error } = await supabase.from('paiements').insert({
-      montant: val,
-      montant_par_personne: parseFloat((val / NB_PARTICIPANTS).toFixed(2)),
-      note: note || 'Distribution syndicat',
-    })
-    setSaving(false)
-    if (error) {
-      setSaveMsg({ ok: false, text: '❌ Erreur lors de l\'enregistrement.' })
-    } else {
-      setSaveMsg({ ok: true, text: `✅ Paiement de ${val.toFixed(2)}€ enregistré (${(val / NB_PARTICIPANTS).toFixed(2)}€/pers.)` })
+    try {
+      await adminFetch('insert_paiement', {
+        montant: val,
+        montant_par_personne: parseFloat((val / NB_PARTICIPANTS).toFixed(2)),
+        note: note.trim() || 'Distribution syndicat',
+      })
+      setSaveMsg({ ok: true, text: `✅ ${val.toFixed(2)}€ enregistré (${(val / NB_PARTICIPANTS).toFixed(2)}€/pers.)` })
       setMontant('')
       setNote('')
+    } catch (e) {
+      setSaveMsg({ ok: false, text: `❌ ${(e as Error).message}` })
+    } finally {
+      setSaving(false)
+      setTimeout(() => setSaveMsg(null), 4000)
     }
-    setTimeout(() => setSaveMsg(null), 4000)
   }
 
   const toggleVirement = async (nom: string, checked: boolean) => {
     const today = new Date().toISOString().split('T')[0]
-    // Upsert par participant_nom
-    const { error } = await supabase.from('virements').upsert(
-      { participant_nom: nom, effectue: checked, date_virement: checked ? today : null },
-      { onConflict: 'participant_nom' }
-    )
-    if (!error) {
+    try {
+      await adminFetch('upsert_virement', {
+        participant_nom: nom,
+        effectue: checked,
+        date_virement: checked ? today : null,
+      })
       setVirements((prev) => {
         const next = { ...prev }
         if (checked) next[nom] = today
         else delete next[nom]
         return next
       })
+    } catch (e) {
+      console.error('Erreur virement:', (e as Error).message)
     }
   }
 
   const resetVirements = async () => {
     if (!confirm('Réinitialiser tous les virements ?')) return
-    await supabase.from('virements').delete().neq('id', '00000000-0000-0000-0000-000000000000')
-    setVirements({})
+    try {
+      await adminFetch('reset_virements')
+      setVirements({})
+    } catch (e) {
+      console.error('Erreur reset:', (e as Error).message)
+    }
   }
 
   const vCount = Object.keys(virements).length
@@ -152,7 +178,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
         </button>
       </div>
 
-      {/* Scraping */}
+      {/* Vérification serveur */}
       <Card className="border-blue-700 bg-blue-900/20">
         <h3 className="text-base font-bold text-blue-300 mb-1">🔄 Vérification serveur</h3>
         <p className="text-xs text-gray-400 mb-3">Vérifier l'état du serveur backend.</p>
@@ -170,7 +196,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
         )}
       </Card>
 
-      {/* Paiement */}
+      {/* Enregistrer un paiement */}
       <Card className="border-green-700 bg-green-900/20">
         <h3 className="text-base font-bold text-green-300 mb-1">💸 Enregistrer un paiement</h3>
         <p className="text-xs text-gray-400 mb-3">Montant total distribué au syndicat.</p>
@@ -200,7 +226,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
         )}
       </Card>
 
-      {/* Virements */}
+      {/* Suivi des virements */}
       <Card>
         <h3 className="text-base font-bold text-green-300 mb-1">✅ Suivi des virements individuels</h3>
         <p className="text-xs text-gray-400 mb-3">Cochez quand le virement a été effectué.</p>
@@ -237,7 +263,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
         </div>
       </Card>
 
-      {/* Infos système */}
+      {/* Informations système */}
       <Card>
         <h3 className="text-base font-bold text-gray-300 mb-3">ℹ️ Informations système</h3>
         {sysInfo ? (
