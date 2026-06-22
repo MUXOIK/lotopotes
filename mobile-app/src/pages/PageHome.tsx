@@ -3,6 +3,7 @@ import { getSyndicatByCode } from '../lib/db'
 import { SYNDICAT_STORAGE_KEY } from '../lib/constants'
 import type { Syndicat } from '../lib/types'
 import { Button } from '../components/ui'
+import { ChipLogo } from '../components/ChipLogo'
 
 interface Props {
   onCreateNew: () => void
@@ -38,7 +39,9 @@ export function PageHome({ onCreateNew, onJoin }: Props) {
       <div className="w-full max-w-sm space-y-8">
         {/* Logo */}
         <div className="text-center">
-          <div className="text-7xl mb-4">🎲</div>
+          <div className="flex justify-center mb-4">
+            <ChipLogo size={88} />
+          </div>
           <h1 className="text-3xl font-bold text-yellow-400 mb-1">LotoPotes</h1>
           <p className="text-gray-400 text-sm">Gérez votre syndicat Loto entre amis</p>
         </div>

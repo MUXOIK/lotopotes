@@ -1,0 +1,3 @@
+function e(t){if(!t||typeof t!=`object`)return t;if(Array.isArray(t))return t.map(e);let n={};for(let r in t)n[r.trim()]=e(t[r]);return n}var t=new Map,n=55e3;async function r(r){let i=Date.now(),a=t.get(r);if(a&&a.expires>i)return a.data;let o=await fetch(`undefined${r}`);if(!o.ok)throw Error(`HTTP ${o.status}`);let s=e(await o.json());return t.set(r,{data:s,expires:i+n}),s}async function i(){return r(`/api/loto-complet`)}export{i as t};
+
+export { t }

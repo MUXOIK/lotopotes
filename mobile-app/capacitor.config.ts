@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli'
 
 const config: CapacitorConfig = {
-  appId: 'fr.lotopotes.syndicat',
-  appName: 'LotoPotes Syndicat',
+  appId: 'fr.lotopotes.app',
+  appName: 'LotoPotes',
   webDir: 'dist',
   server: {
     androidScheme: 'https',

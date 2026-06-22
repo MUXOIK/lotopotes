@@ -3,6 +3,7 @@ import type { Syndicat, Page } from './lib/types'
 import { SYNDICAT_STORAGE_KEY } from './lib/constants'
 import { getSyndicatById } from './lib/db'
 import { Spinner } from './components/ui'
+import { ChipLogo } from './components/ChipLogo'
 import { PageHome } from './pages/PageHome'
 import { PageOnboarding } from './pages/PageOnboarding'
 
@@ -94,7 +95,7 @@ function SyndicatApp({ syndicat, onLeave }: { syndicat: Syndicat; onLeave: () =>
           <div className="bg-gradient-to-r from-blue-950 via-blue-900 to-blue-950 rounded-2xl p-4 mb-4 border border-yellow-500/50">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <span className="text-3xl">🎲</span>
+                <ChipLogo size={40} />
                 <div>
                   <h1 className="text-base font-bold text-yellow-400 leading-tight">{syndicat.nom.toUpperCase()}</h1>
                   <p className="text-blue-300/70 text-xs mt-0.5">Code : <strong className="text-yellow-300">{syndicat.code}</strong></p>
