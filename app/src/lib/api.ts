@@ -50,5 +50,5 @@ export async function fetchTest(): Promise<ApiTest> {
 
 export async function fetchForceScrape(): Promise<ApiLotoComplet> {
   invalidateCache()
-  return apiFetch<ApiLotoComplet>('/api/loto-complet')
+  return apiFetch<ApiLotoComplet>('/api/force-scrape')
 }

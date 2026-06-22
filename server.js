@@ -437,6 +437,72 @@ app.get('/api/loto-complet', async (req, res) => {
   res.json({success:true,tirage,historique:allGains,distribution,cagnotte});
 });
 
+app.get('/api/force-scrape', async (req, res) => {
+  if (initPromise) await initPromise;
+  // Vide le cache côté serveur pour forcer un nouveau scraping
+  tirageScrape = null;
+  cacheExpiry = null;
+  console.log('[FORCE-SCRAPE] Cache vidé, redirection vers /api/loto-complet');
+  // Déclencher un scrape en appelant directement la logique
+  const mainResp = await httpGet('www.secretsdujeu.com', '/page/jeux_loto_resultats.html');
+  if (!mainResp.ok) {
+    return res.json({success:false,tirage:null,historique:allGains,distribution,cagnotte,error:'Erreur scraping réseau'});
+  }
+  const html = mainResp.data;
+  let date = null;
+  const dm = /\"dateModified\":\"(\d{4}-\d{2}-\d{2})/.exec(html);
+  if (dm) date = dm[1]+'T20:50:00.000Z';
+  else {
+    const now = new Date(), day = now.getDay(), jours = [1,3,6];
+    let db = 0;
+    for (let i = 0; i <= 7; i++) { if (jours.includes(((day-i)+7)%7)) { db = i; break; } }
+    const last = new Date(now); last.setDate(now.getDate()-db);
+    if (db === 0 && now.getHours() < 21) {
+      for (let i = 1; i <= 7; i++) {
+        if (jours.includes(((day-i)+7)%7)) { last.setDate(now.getDate()-i); break; }
+      }
+    }
+    last.setHours(20, 50, 0, 0);
+    date = last.toISOString();
+  }
+  const m = /combinaison gagnante[^0-9]*(\d+)-(\d+)-(\d+)-(\d+)-(\d+)[^0-9]*num.ro Chance est le (\d+)/.exec(html);
+  if (!m) {
+    return res.json({success:false,tirage:null,historique:allGains,distribution,cagnotte,error:'Numéros non trouvés sur le site'});
+  }
+  const nums = [1,2,3,4,5].map(i => parseInt(m[i]));
+  const chance = parseInt(m[6]);
+  let rg1 = {'5+1':0,'5':100000,'4+1':1000,'4':500,'3+1':50,'3':20,'2+1':9,'2':4,'1+1':2.20};
+  let rg2 = {}, nums2 = [];
+  const urlM = /\"url\":\"(https:\/\/www\.secretsdujeu\.com\/loto\/resultat\/tirage-loto-du-[^\"]+)\"/.exec(html);
+  if (urlM) {
+    const detail = await httpGet('www.secretsdujeu.com', urlM[1].replace('https://www.secretsdujeu.com',''));
+    if (detail.ok && detail.status === 200) {
+      rg1 = parseMontants1er(detail.data);
+      rg2 = parseMontants2nd(detail.data);
+      const p2 = /class=[\"']loto-numero second-tir[\"'][^>]*>\s*(\d{1,2})\s*<\/p>/g;
+      let mm;
+      while ((mm = p2.exec(detail.data)) !== null) nums2.push(parseInt(mm[1]));
+    }
+  }
+  const tirage = {nums, chance, nums2, date, rapportGains: rg1, rapportGains2: rg2};
+  const {total, gainsDetails} = calculerGainsTirage(tirage);
+  tirage.gainTotal = total;
+  tirage.gainsDetails = gainsDetails;
+  const previousDate = tirageScrape ? tirageScrape.date : null;
+  tirageScrape = tirage;
+  cacheExpiry = prochainTirage();
+  if (!previousDate || previousDate !== tirage.date) {
+    nombreTirages++;
+    await sauvegarderCompteur();
+  }
+  await sauvegarderScrape(tirage);
+  if (total > 0) {
+    await ajouterAuHistorique(tirage, gainsDetails);
+  }
+  console.log('[FORCE-SCRAPE] ✅ Terminé — tirage du '+date.split('T')[0]+', gain: '+total+'€');
+  res.json({success:true,tirage,historique:allGains,distribution,cagnotte});
+});
+
 app.get('/api/stats', async (req, res) => {
   if (initPromise) await initPromise;
   res.json({success:true,historique:allGains,distribution,cagnotte});
