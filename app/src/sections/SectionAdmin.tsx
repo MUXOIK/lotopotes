@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { fetchTest, fetchBilan } from '../lib/api'
+import { fetchTest, fetchBilan, fetchForceScrape, invalidateCache } from '../lib/api'
 import { PARTICIPANTS, ADMIN_PASSWORD, NB_PARTICIPANTS } from '../lib/constants'
 import type { Paiement, Virement } from '../lib/types'
 import { Spinner, Card } from '../components/ui'
@@ -98,6 +98,10 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
   const [checkOffline, setCheckOffline] = useState(false)
   const [checkResult, setCheckResult] = useState<string | null>(null)
 
+  const [scrapeLoading, setScrapeLoading] = useState(false)
+  const [scrapeOffline, setScrapeOffline] = useState(false)
+  const [scrapeResult, setScrapeResult] = useState<{ ok: boolean; text: string } | null>(null)
+
   const loadLatestPaiementAndVirements = useCallback(async () => {
     const { data: paiements } = await supabase
       .from('paiements')
@@ -146,6 +150,34 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
     loadLatestPaiementAndVirements()
     loadSysInfo()
   }, [loadLatestPaiementAndVirements])
+
+  const forcerScrape = async () => {
+    setScrapeLoading(true)
+    setScrapeResult(null)
+    setScrapeOffline(false)
+    try {
+      invalidateCache()
+      const data = await fetchForceScrape()
+      if (data?.tirage) {
+        const t = data.tirage
+        const dateStr = t.date ? new Date(t.date).toLocaleDateString('fr-FR') : '?'
+        const nums = t.nums?.join(' - ') ?? '?'
+        const chance = t.chance ?? '?'
+        const gain = t.gainTotal ?? 0
+        setScrapeResult({
+          ok: true,
+          text: `✅ Tirage du ${dateStr} : ${nums} | Chance: ${chance} | Gain: ${gain.toFixed(2)}€`,
+        })
+      } else {
+        setScrapeResult({ ok: false, text: '⚠️ Tirage non disponible pour le moment.' })
+      }
+    } catch {
+      setScrapeOffline(true)
+    } finally {
+      setScrapeLoading(false)
+      setTimeout(() => setScrapeResult(null), 10000)
+    }
+  }
 
   const checkServeur = async () => {
     setCheckLoading(true)
@@ -236,6 +268,32 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
             {checkResult && (
               <p className={`mt-2 text-sm ${checkResult.startsWith('✅') ? 'text-green-400' : 'text-red-400'}`}>
                 {checkResult}
+              </p>
+            )}
+          </>
+        )}
+      </Card>
+
+      {/* Forcer le scrape */}
+      <Card className="border-yellow-700 bg-yellow-900/20">
+        <h3 className="text-base font-bold text-yellow-300 mb-1">🎰 Forcer le scrape des résultats</h3>
+        <p className="text-xs text-gray-400 mb-3">
+          Vide le cache et récupère immédiatement les derniers résultats du tirage.
+        </p>
+        {scrapeOffline ? (
+          <ServerStatus onRetry={forcerScrape} loading={scrapeLoading} />
+        ) : (
+          <>
+            <button
+              onClick={forcerScrape}
+              disabled={scrapeLoading}
+              className="w-full p-3 rounded-lg bg-gradient-to-r from-yellow-700 to-amber-600 hover:opacity-90 disabled:opacity-60 text-white font-bold transition"
+            >
+              {scrapeLoading ? '⏳ Scrape en cours...' : '🔄 Forcer le scrape maintenant'}
+            </button>
+            {scrapeResult && (
+              <p className={`mt-2 text-sm ${scrapeResult.ok ? 'text-green-400' : 'text-yellow-400'}`}>
+                {scrapeResult.text}
               </p>
             )}
           </>
