@@ -518,17 +518,38 @@ app.get('/api/test', (req, res) => {
 
 let initPromise = null;
 
+function dernierTirageEcoule() {
+  const now = new Date();
+  const jours = [1, 3, 6];
+  for (let i = 0; i <= 7; i++) {
+    const d = new Date(now);
+    d.setDate(now.getDate() - i);
+    if (jours.includes(d.getDay())) {
+      d.setHours(20, 50, 0, 0);
+      if (d <= now) return d;
+    }
+  }
+  return null;
+}
+
 async function initialiser() {
   console.log('[INIT] Chargement des données...');
   await chargerHistoriqueDonnees();
   await chargerScrapeData();
   await chargerCompteurTirages();
   if (tirageScrape) {
-    cacheExpiry = prochainTirage();
-    const {total, gainsDetails} = calculerGainsTirage(tirageScrape);
-    tirageScrape.gainTotal = total;
-    tirageScrape.gainsDetails = gainsDetails;
-    console.log('[CACHE] ✅ Pré-rempli avec tirage du '+tirageScrape.date.split('T')[0]);
+    const dernierTirage = dernierTirageEcoule();
+    const tirageDate = new Date(tirageScrape.date);
+    if (dernierTirage && tirageDate >= dernierTirage) {
+      cacheExpiry = prochainTirage();
+      const {total, gainsDetails} = calculerGainsTirage(tirageScrape);
+      tirageScrape.gainTotal = total;
+      tirageScrape.gainsDetails = gainsDetails;
+      console.log('[CACHE] ✅ Pré-rempli avec tirage du '+tirageScrape.date.split('T')[0]);
+    } else {
+      tirageScrape = null;
+      console.log('[CACHE] ⚠️  Tirage obsolète — scrape nécessaire au prochain appel');
+    }
   }
   console.log('[INIT] ✅ Prêt — cache valide: '+cacheValide());
 }
