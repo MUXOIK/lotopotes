@@ -230,7 +230,7 @@ function parseMontants1er(html) {
     if (/2nd.*tirage|second.*tirage/i.test(rowText)) break;
     const cells = lignes[i];
     let bonsMatch = /^(\d)\s*(?:bons?|bon)\b/i.exec(cells[0] || '');
-    if (!bonsMatch && /0.*ou.*1.*bon/i.test(cells[0])) { bonsMatch = ['', '1']; }
+    if (!bonsMatch && /(?:0.*ou.*1|1.*ou.*0).*bon/i.test(cells[0])) { bonsMatch = ['', '1']; }
     if (!bonsMatch) continue;
     const bons = parseInt(bonsMatch[1]);
     const avecChance = /chance/i.test(rowText);
@@ -238,7 +238,7 @@ function parseMontants1er(html) {
     for (let j = 0; j < cells.length; j++) {
       if (/€|\/|pas de gagnant/i.test(cells[j])) { montant = parseMontantCellule(cells[j]); break; }
     }
-    const cle = avecChance ? (bons+'+1') : String(bons);
+    const cle = avecChance ? (bons > 0 ? (bons+'+1') : '1+1') : String(bons);
     if (cle in rg) { rg[cle] = montant !== null ? montant : 0; }
   }
   return rg;
