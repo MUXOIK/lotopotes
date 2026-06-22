@@ -25,7 +25,7 @@
       "4+1": 0,
       "3+1": 0,
       "2+1": 0,
-      "1+1": 0
+      "1+1": 2.2
     },
     "rapportGains2": {
       "2": 0,
@@ -33,7 +33,13 @@
       "4": 0,
       "5": 0
     },
-    "gainTotal": 0,
-    "gainsDetails": []
+    "gainTotal": 2.2,
+    "gainsDetails": [
+      {
+        "grille": 5,
+        "tirage": "1er",
+        "gain": 2.2
+      }
+    ]
   }
 }
