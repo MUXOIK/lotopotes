@@ -346,7 +346,6 @@ function cacheValide() {
 // ============================================
 
 app.get('/api/loto-complet', async (req, res) => {
-  // Attendre la fin de l'initialisation si le serveur vient de démarrer
   if (initPromise) await initPromise;
 
   if (cacheValide()) {
@@ -403,7 +402,6 @@ app.get('/api/loto-complet', async (req, res) => {
   
   const tirage = {nums, chance, nums2, date, rapportGains: rg1, rapportGains2: rg2};
   
-  // FALLBACK : Si scraping échoue, reprendre l'historique
   if (allGains.length > 0 && Object.values(tirage.rapportGains).every(v => v === 0)) {
     const dernierGain = allGains[allGains.length - 1];
     if (sameNums(tirage.nums, dernierGain.nums) && sameNums(tirage.nums2, dernierGain.nums2)) {
@@ -416,7 +414,6 @@ app.get('/api/loto-complet', async (req, res) => {
   tirage.gainTotal = total;
   tirage.gainsDetails = gainsDetails;
   
-  // Incrémenter le compteur si c'est un nouveau tirage
   const previousDate = tirageScrape ? tirageScrape.date : null;
   tirageScrape = tirage;
   cacheExpiry = prochainTirage();
@@ -426,10 +423,8 @@ app.get('/api/loto-complet', async (req, res) => {
     await sauvegarderCompteur();
   }
   
-  // Sauvegarder dans data-scrape.json
   await sauvegarderScrape(tirage);
   
-  // Si gains > 0, ajouter à data.json (historique)
   if (total > 0) {
     await ajouterAuHistorique(tirage, gainsDetails);
   }
@@ -439,11 +434,9 @@ app.get('/api/loto-complet', async (req, res) => {
 
 app.get('/api/force-scrape', async (req, res) => {
   if (initPromise) await initPromise;
-  // Vide le cache côté serveur pour forcer un nouveau scraping
   tirageScrape = null;
   cacheExpiry = null;
-  console.log('[FORCE-SCRAPE] Cache vidé, redirection vers /api/loto-complet');
-  // Déclencher un scrape en appelant directement la logique
+  console.log('[FORCE-SCRAPE] Cache vidé, scraping en cours...');
   const mainResp = await httpGet('www.secretsdujeu.com', '/page/jeux_loto_resultats.html');
   if (!mainResp.ok) {
     return res.json({success:false,tirage:null,historique:allGains,distribution,cagnotte,error:'Erreur scraping réseau'});
@@ -523,7 +516,6 @@ app.get('/api/test', (req, res) => {
 // DÉMARRAGE
 // ============================================
 
-// Promesse d'initialisation — les requêtes l'attendent si le serveur vient de démarrer
 let initPromise = null;
 
 async function initialiser() {
