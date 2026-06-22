@@ -239,8 +239,9 @@ function parseMontants1er(html) {
       if (/€|\/|pas de gagnant/i.test(cells[j])) { montant = parseMontantCellule(cells[j]); break; }
     }
     const cle = avecChance ? (bons > 0 ? (bons+'+1') : '1+1') : String(bons);
-    if (cle in rg) { rg[cle] = montant !== null ? montant : 0; }
+    if (cle in rg && montant !== null && montant > 0) { rg[cle] = montant; }
   }
+  if (rg['1+1'] === 0) rg['1+1'] = 2.20;
   return rg;
 }
 
