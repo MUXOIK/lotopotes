@@ -80,9 +80,6 @@ export function SectionProbabilites() {
   const top5triplets = Object.entries(triplets).sort((a, b) => b[1] - a[1]).slice(0, 5)
   const pariteLabels = ['0P 5I', '1P 4I', '2P 3I', '3P 2I', '4P 1I', '5P 0I']
 
-  const moyPairs = (tirages.reduce((s, t) => s + t.nums.filter((n) => n % 2 === 0).length, 0) / nb).toFixed(1)
-  const attendu = (nb * 5) / 49
-
   const sortedByDate = [...tirages].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
   const retards: { n: number; absence: number }[] = []
   for (let n = 1; n <= 49; n++) {
@@ -91,12 +88,6 @@ export function SectionProbabilites() {
   }
   retards.sort((a, b) => b.absence - a.absence)
   const top5retardataires = retards.slice(0, 5)
-
-  let sousRepresente = 1
-  let sousRepresenteFreq = nb
-  for (let n = 1; n <= 49; n++) {
-    if (freqNums[n] < sousRepresenteFreq) { sousRepresenteFreq = freqNums[n]; sousRepresente = n }
-  }
 
   return (
     <div className="space-y-4">
@@ -215,23 +206,6 @@ export function SectionProbabilites() {
             <div key={n} className="flex flex-col items-center">
               <div className="w-9 h-9 bg-orange-600 rounded-full flex items-center justify-center font-bold text-sm text-white">{n}</div>
               <span className="text-xs text-orange-300 mt-0.5">{absence}t</span>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      <Card>
-        <h3 className="text-base font-bold text-yellow-300 mb-3">📈 KPI du syndicat</h3>
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            ['Tirages analysés', String(nb), '#a78bfa'],
-            ['Moy. pairs/tirage', `${moyPairs}/5`, '#34d399'],
-            ['Sous-représenté', `N°${sousRepresente} — ${sousRepresenteFreq}x (att. ${attendu.toFixed(1)})`, '#60a5fa'],
-            ['Fréq. attendue/num', `${attendu.toFixed(1)}x / an`, '#fbbf24'],
-          ].map(([label, val, color]) => (
-            <div key={label} className="bg-gray-700/50 rounded-lg p-3">
-              <div className="text-xs text-gray-400 mb-1">{label}</div>
-              <div className="text-base font-bold leading-tight" style={{ color }}>{val}</div>
             </div>
           ))}
         </div>
