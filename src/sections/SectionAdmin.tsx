@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { fetchTest, fetchBilan, fetchForceScrape, invalidateCache } from '../lib/api'
+import { fetchTest, fetchBilan } from '../lib/api'
 import { PARTICIPANTS, ADMIN_PASSWORD, NB_PARTICIPANTS } from '../lib/constants'
 import type { Paiement, Virement } from '../lib/types'
 import { Spinner, Card } from '../components/ui'
@@ -61,6 +61,26 @@ function AdminLogin({ onLogin }: { onLogin: () => void }) {
   )
 }
 
+function ServerStatus({ onRetry, loading }: { onRetry: () => void; loading: boolean }) {
+  return (
+    <div className="rounded-xl bg-orange-900/30 border border-orange-700 p-4 text-center">
+      <p className="text-2xl mb-2">😴</p>
+      <p className="text-orange-300 font-bold text-sm mb-1">Serveur en veille</p>
+      <p className="text-gray-400 text-xs mb-4">
+        Le serveur se met en veille après 15 min d'inactivité.<br />
+        Le réveil prend environ 30 secondes.
+      </p>
+      <button
+        onClick={onRetry}
+        disabled={loading}
+        className="w-full p-3 rounded-lg bg-orange-700 hover:bg-orange-600 disabled:opacity-60 text-white font-bold text-sm transition"
+      >
+        {loading ? '⏳ Connexion en cours...' : '🔄 Réessayer la connexion'}
+      </button>
+    </div>
+  )
+}
+
 function AdminPanel({ onLogout }: { onLogout: () => void }) {
   const [montant, setMontant] = useState('')
   const [note, setNote] = useState('')
@@ -71,10 +91,12 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
   const [virements, setVirements] = useState<Record<string, Virement>>({})
 
   const [sysLoading, setSysLoading] = useState(true)
+  const [sysOffline, setSysOffline] = useState(false)
   const [sysInfo, setSysInfo] = useState<string | null>(null)
 
-  const [scrapeLoading, setScrapeLoading] = useState(false)
-  const [scrapeMsg, setScrapeMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [checkLoading, setCheckLoading] = useState(false)
+  const [checkOffline, setCheckOffline] = useState(false)
+  const [checkResult, setCheckResult] = useState<string | null>(null)
 
   const loadLatestPaiementAndVirements = useCallback(async () => {
     const { data: paiements } = await supabase
@@ -106,6 +128,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
 
   const loadSysInfo = async () => {
     setSysLoading(true)
+    setSysOffline(false)
     setSysInfo(null)
     try {
       const [test, bilan] = await Promise.all([fetchTest(), fetchBilan()])
@@ -113,7 +136,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
         `Serveur: ${test.ok ? '✅ En ligne' : '❌ Hors ligne'} | Tirages joués: ${bilan.tiragesEffectues} | Tirages gagnants: ${test.allGains} | Cagnotte: ${test.cagnotte}€`
       )
     } catch {
-      setSysInfo('❌ Erreur de connexion au serveur')
+      setSysOffline(true)
     } finally {
       setSysLoading(false)
     }
@@ -124,25 +147,21 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
     loadSysInfo()
   }, [loadLatestPaiementAndVirements])
 
-  const forceScrape = async () => {
-    setScrapeLoading(true)
-    setScrapeMsg(null)
+  const checkServeur = async () => {
+    setCheckLoading(true)
+    setCheckResult(null)
+    setCheckOffline(false)
     try {
-      const result = await fetchForceScrape()
-      invalidateCache()
-      const gain = result.tirage?.gainTotal ?? 0
-      setScrapeMsg({
-        ok: result.success,
-        text: result.success
-          ? `✅ Scrape OK — tirage du ${new Date(result.tirage?.date ?? '').toLocaleDateString('fr-FR')} — gain: ${gain.toFixed(2)}€`
-          : `⚠️ Scrape partiel${result.error ? ': ' + result.error : ''}`,
-      })
-      await loadSysInfo()
-    } catch (e) {
-      setScrapeMsg({ ok: false, text: `❌ ${(e as Error).message}` })
+      const [test, bilan] = await Promise.all([fetchTest(), fetchBilan()])
+      setCheckResult(
+        test.ok
+          ? `✅ Serveur OK — ${bilan.tiragesEffectues} tirages joués, ${test.allGains} gagnants, cagnotte ${test.cagnotte}€`
+          : '❌ Serveur indisponible'
+      )
+    } catch {
+      setCheckOffline(true)
     } finally {
-      setScrapeLoading(false)
-      setTimeout(() => setScrapeMsg(null), 8000)
+      setCheckLoading(false)
     }
   }
 
@@ -199,21 +218,27 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
         </button>
       </div>
 
-      {/* Force Scrape */}
-      <Card className="border-orange-700 bg-orange-900/20">
-        <h3 className="text-base font-bold text-orange-300 mb-1">🔄 Mettre à jour les tirages</h3>
-        <p className="text-xs text-gray-400 mb-3">Force le re-scraping des résultats FDJ depuis secretsdujeu.com.</p>
-        <button
-          onClick={forceScrape}
-          disabled={scrapeLoading}
-          className="w-full p-3 rounded-lg bg-orange-700 hover:bg-orange-600 disabled:opacity-60 text-white font-bold transition"
-        >
-          {scrapeLoading ? '⏳ Scraping en cours...' : '🎰 Force Scrape'}
-        </button>
-        {scrapeMsg && (
-          <p className={`mt-2 text-sm ${scrapeMsg.ok ? 'text-green-400' : 'text-orange-400'}`}>
-            {scrapeMsg.text}
-          </p>
+      {/* Vérification serveur */}
+      <Card className="border-blue-700 bg-blue-900/20">
+        <h3 className="text-base font-bold text-blue-300 mb-1">🔄 Vérification serveur</h3>
+        <p className="text-xs text-gray-400 mb-3">Vérifier l'état du serveur backend.</p>
+        {checkOffline ? (
+          <ServerStatus onRetry={checkServeur} loading={checkLoading} />
+        ) : (
+          <>
+            <button
+              onClick={checkServeur}
+              disabled={checkLoading}
+              className="w-full p-3 rounded-lg bg-blue-700 hover:bg-blue-600 disabled:opacity-60 text-white font-bold transition"
+            >
+              {checkLoading ? '⏳ En cours...' : '🔄 Vérifier le serveur'}
+            </button>
+            {checkResult && (
+              <p className={`mt-2 text-sm ${checkResult.startsWith('✅') ? 'text-green-400' : 'text-red-400'}`}>
+                {checkResult}
+              </p>
+            )}
+          </>
         )}
       </Card>
 
@@ -249,7 +274,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
         )}
       </Card>
 
-      {/* Suivi des virements */}
+      {/* Suivi des virements du dernier paiement */}
       <Card>
         <h3 className="text-base font-bold text-green-300 mb-1">✅ Suivi des virements individuels</h3>
         {latestPaiement ? (
@@ -301,6 +326,8 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
         <h3 className="text-base font-bold text-gray-300 mb-3">ℹ️ Informations système</h3>
         {sysLoading ? (
           <Spinner />
+        ) : sysOffline ? (
+          <ServerStatus onRetry={loadSysInfo} loading={sysLoading} />
         ) : sysInfo ? (
           <div className="text-sm text-gray-400 space-y-1">
             {sysInfo.split(' | ').map((line, i) => (

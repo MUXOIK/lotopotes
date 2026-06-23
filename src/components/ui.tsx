@@ -12,7 +12,7 @@ export function Spinner() {
 export function LoadingWithHint() {
   const [slow, setSlow] = useState(false)
   useEffect(() => {
-    const t = setTimeout(() => setSlow(true), 8000)
+    const t = setTimeout(() => setSlow(true), 7000)
     return () => clearTimeout(t)
   }, [])
   return (
@@ -20,7 +20,7 @@ export function LoadingWithHint() {
       <Spinner />
       {slow && (
         <p className="text-xs text-amber-400 mt-2 animate-pulse">
-          Chargement en cours...
+          Le serveur se reveille... (jusqu'a ~50 secondes au demarrage)
         </p>
       )}
     </div>
