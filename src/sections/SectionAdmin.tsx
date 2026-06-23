@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { fetchTest, fetchBilan } from '../lib/api'
+import { fetchTest, fetchBilan, fetchForceScrape, invalidateCache } from '../lib/api'
 import { PARTICIPANTS, ADMIN_PASSWORD, NB_PARTICIPANTS } from '../lib/constants'
 import type { Paiement, Virement } from '../lib/types'
 import { Spinner, Card } from '../components/ui'
@@ -98,6 +98,9 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
   const [checkOffline, setCheckOffline] = useState(false)
   const [checkResult, setCheckResult] = useState<string | null>(null)
 
+  const [scrapeLoading, setScrapeLoading] = useState(false)
+  const [scrapeMsg, setScrapeMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
   const loadLatestPaiementAndVirements = useCallback(async () => {
     const { data: paiements } = await supabase
       .from('paiements')
@@ -162,6 +165,28 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
       setCheckOffline(true)
     } finally {
       setCheckLoading(false)
+    }
+  }
+
+  const forceScrape = async () => {
+    setScrapeLoading(true)
+    setScrapeMsg(null)
+    try {
+      const result = await fetchForceScrape()
+      invalidateCache()
+      const gain = result.tirage?.gainTotal ?? 0
+      setScrapeMsg({
+        ok: result.success,
+        text: result.success
+          ? `✅ Scrape OK — tirage du ${new Date(result.tirage?.date ?? '').toLocaleDateString('fr-FR')} — gain: ${gain.toFixed(2)}€`
+          : `⚠️ Scrape partiel${result.error ? ': ' + result.error : ''}`,
+      })
+      await loadSysInfo()
+    } catch (e) {
+      setScrapeMsg({ ok: false, text: `❌ ${(e as Error).message}` })
+    } finally {
+      setScrapeLoading(false)
+      setTimeout(() => setScrapeMsg(null), 8000)
     }
   }
 
@@ -239,6 +264,24 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
               </p>
             )}
           </>
+        )}
+      </Card>
+
+      {/* Mettre à jour les tirages */}
+      <Card className="border-orange-700 bg-orange-900/20">
+        <h3 className="text-base font-bold text-orange-300 mb-1">🎰 Mettre à jour les tirages</h3>
+        <p className="text-xs text-gray-400 mb-3">Force le re-scraping des résultats FDJ depuis secretsdujeu.com.</p>
+        <button
+          onClick={forceScrape}
+          disabled={scrapeLoading}
+          className="w-full p-3 rounded-lg bg-orange-700 hover:bg-orange-600 disabled:opacity-60 text-white font-bold transition"
+        >
+          {scrapeLoading ? '⏳ Scraping en cours...' : '🔄 Force Scrape'}
+        </button>
+        {scrapeMsg && (
+          <p className={`mt-2 text-sm ${scrapeMsg.ok ? 'text-green-400' : 'text-orange-400'}`}>
+            {scrapeMsg.text}
+          </p>
         )}
       </Card>
 
