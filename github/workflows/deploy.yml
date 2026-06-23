@@ -2,7 +2,7 @@ name: Build et deploiement
 
 on:
   push:
-    branches: [main]
+    branches: [principal]
 
 permissions:
   contents: write
@@ -20,13 +20,13 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: app/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Installer les dependances
-        run: cd app && npm ci
+        run: npm ci
 
       - name: Compiler l'application
-        run: cd app && npm run build
+        run: npm run build
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
@@ -36,6 +36,5 @@ jobs:
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./app/dist
+          publish_dir: ./dist
           force_orphan: true
-

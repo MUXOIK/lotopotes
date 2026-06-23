@@ -3,8 +3,8 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
-  base: '/',
-  publicDir: 'app/public',
+  base: '/lotopotes/',
+  publicDir: 'public',
   plugins: [
     react(),
     VitePWA({
