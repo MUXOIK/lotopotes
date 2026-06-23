@@ -81,8 +81,16 @@ export function SectionProbabilites() {
   const pariteLabels = ['0P 5I', '1P 4I', '2P 3I', '3P 2I', '4P 1I', '5P 0I']
 
   const moyPairs = (tirages.reduce((s, t) => s + t.nums.filter((n) => n % 2 === 0).length, 0) / nb).toFixed(1)
-  const moySum = (tirages.reduce((s, t) => s + t.nums.reduce((a, b) => a + b, 0), 0) / nb).toFixed(1)
   const numsUniques = new Set(tirages.flatMap((t) => t.nums)).size
+
+  const sortedByDate = [...tirages].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  let retardataire = 1
+  let retardAbsence = 0
+  for (let n = 1; n <= 49; n++) {
+    const idx = sortedByDate.findIndex((t) => t.nums.includes(n))
+    const absence = idx === -1 ? nb : idx
+    if (absence > retardAbsence) { retardAbsence = absence; retardataire = n }
+  }
 
   return (
     <div className="space-y-4">
@@ -200,7 +208,7 @@ export function SectionProbabilites() {
           {[
             ['Tirages analysés', String(nb), '#a78bfa'],
             ['Moy. pairs/tirage', `${moyPairs}/5`, '#34d399'],
-            ['Somme moy. 5 nums', String(moySum), '#60a5fa'],
+            ['Retardataire max', `N°${retardataire} — ${retardAbsence} tirages`, '#60a5fa'],
             ['Numéros uniques', `${numsUniques}/49`, '#fbbf24'],
           ].map(([label, val, color]) => (
             <div key={label} className="bg-gray-700/50 rounded-lg p-3">
