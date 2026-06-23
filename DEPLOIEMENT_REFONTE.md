@@ -1,8 +1,6 @@
 # ✅ REFONTE COMPLÈTE - FICHIERS PRÊTS À DÉPLOYER
 
-## 🎯 CE QUI A CHANGÉ (L'ARCHITECTURE CORRECTE)
-
-### **AVANT (BUG) :**
+## 🎯 C
 - 1 seul fichier data.json pour deux usages différents
 - Confusion entre tirage du jour et historique des gains
 - Obligation de tricher manuellement à J+1
