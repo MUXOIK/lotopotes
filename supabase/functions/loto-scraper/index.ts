@@ -39,16 +39,8 @@ const PARTICIPANTS: string[] = [
   "WEITZMANN Dalia & Jacques",
 ];
 
-interface RapportGains {
-  [key: string]: number;
-}
-
-interface GainDetail {
-  grille: number;
-  tirage: string;
-  gain: number;
-}
-
+interface RapportGains { [key: string]: number }
+interface GainDetail { grille: number; tirage: string; gain: number }
 interface Tirage {
   nums: number[];
   chance: number;
@@ -60,7 +52,6 @@ interface Tirage {
   gainTotal?: number;
   gainsDetails?: GainDetail[];
 }
-
 interface CacheRow {
   id: number;
   tirage_data: Tirage | null;
@@ -68,21 +59,10 @@ interface CacheRow {
   nombre_tirages: number;
 }
 
-interface HistoriqueRow {
-  tirage_data: Tirage;
-  gain_total: number;
-}
-
-function calculerGainsTirage(t: Tirage): {
-  total: number;
-  gainsDetails: GainDetail[];
-} {
+function calculerGainsTirage(t: Tirage): { total: number; gainsDetails: GainDetail[] } {
   const rg = t.rapportGains || {};
   const rg2 = t.rapportGains2 || {};
-  const a2 =
-    t.nums2 &&
-    t.nums2.length === 5 &&
-    Object.values(rg2).some((v) => (v as number) > 0);
+  const a2 = t.nums2 && t.nums2.length === 5 && Object.values(rg2).some((v) => (v as number) > 0);
   let total = 0;
   const gainsDetails: GainDetail[] = [];
 
@@ -103,7 +83,6 @@ function calculerGainsTirage(t: Tirage): {
       total += g;
       gainsDetails.push({ grille: i + 1, tirage: "1er", gain: g });
     }
-
     if (a2) {
       const n2 = t.nums2.filter((x) => GRILLES[i].includes(x)).length;
       let g2 = 0;
@@ -122,10 +101,8 @@ function calculerGainsTirage(t: Tirage): {
 
 function extraireLignesTableau(html: string): string[][] {
   const decoded = html
-    .replace(/&nbsp;/g, " ")
-    .replace(/&euro;/g, "€")
-    .replace(/&quot;/g, '"')
-    .replace(/&amp;/g, "&");
+    .replace(/&nbsp;/g, " ").replace(/&euro;/g, "€")
+    .replace(/&quot;/g, '"').replace(/&amp;/g, "&");
   const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
   const lignes: string[][] = [];
   let tr: RegExpExecArray | null;
@@ -134,10 +111,7 @@ function extraireLignesTableau(html: string): string[][] {
     const cellRegex = /<(?:td|th)[^>]*>([\s\S]*?)<\/(?:td|th)>/gi;
     let cell: RegExpExecArray | null;
     while ((cell = cellRegex.exec(tr[1])) !== null) {
-      const texte = cell[1]
-        .replace(/<[^>]+>/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
+      const texte = cell[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
       cellules.push(texte);
     }
     if (cellules.length > 0) lignes.push(cellules);
@@ -158,17 +132,7 @@ function parseMontantCellule(texte: string): number | null {
 
 function parseMontants1er(html: string): RapportGains {
   const lignes = extraireLignesTableau(html);
-  const rg: RapportGains = {
-    "5+1": 0,
-    "5": 0,
-    "4+1": 0,
-    "4": 0,
-    "3+1": 0,
-    "3": 0,
-    "2+1": 0,
-    "2": 0,
-    "1+1": 0,
-  };
+  const rg: RapportGains = { "5+1": 0, "5": 0, "4+1": 0, "4": 0, "3+1": 0, "3": 0, "2+1": 0, "2": 0, "1+1": 0 };
   for (let i = 0; i < lignes.length; i++) {
     const rowText = lignes[i].join(" ");
     if (/2nd.*tirage|second.*tirage/i.test(rowText)) break;
@@ -182,15 +146,10 @@ function parseMontants1er(html: string): RapportGains {
     const avecChance = /chance/i.test(rowText);
     let montant: number | null = null;
     for (let j = 0; j < cells.length; j++) {
-      if (/€|\/|pas de gagnant/i.test(cells[j])) {
-        montant = parseMontantCellule(cells[j]);
-        break;
-      }
+      if (/€|\/|pas de gagnant/i.test(cells[j])) { montant = parseMontantCellule(cells[j]); break; }
     }
     const cle = avecChance ? (bons > 0 ? bons + "+1" : "1+1") : String(bons);
-    if (cle in rg && montant !== null && montant > 0) {
-      rg[cle] = montant;
-    }
+    if (cle in rg && montant !== null && montant > 0) rg[cle] = montant;
   }
   if (rg["1+1"] === 0) rg["1+1"] = 2.2;
   return rg;
@@ -202,10 +161,7 @@ function parseMontants2nd(html: string): RapportGains {
   let foundSecond = false;
   for (let i = 0; i < lignes.length; i++) {
     const rowText = lignes[i].join(" ");
-    if (/2nd.*tirage|second.*tirage/i.test(rowText)) {
-      foundSecond = true;
-      continue;
-    }
+    if (/2nd.*tirage|second.*tirage/i.test(rowText)) { foundSecond = true; continue; }
     if (!foundSecond) continue;
     const cells = lignes[i];
     const bonsMatch = /^(\d)\s*(?:bons?|bon)\b/i.exec(cells[0] || "");
@@ -214,15 +170,10 @@ function parseMontants2nd(html: string): RapportGains {
     if (![2, 3, 4, 5].includes(bons)) continue;
     let montant: number | null = null;
     for (let j = 0; j < cells.length; j++) {
-      if (/€|\/|pas de gagnant/i.test(cells[j])) {
-        montant = parseMontantCellule(cells[j]);
-        break;
-      }
+      if (/€|\/|pas de gagnant/i.test(cells[j])) { montant = parseMontantCellule(cells[j]); break; }
     }
     const cle = String(bons);
-    if (cle in rg && rg[cle] === 0 && montant !== null) {
-      rg[cle] = montant;
-    }
+    if (cle in rg && rg[cle] === 0 && montant !== null) rg[cle] = montant;
   }
   return rg;
 }
@@ -244,7 +195,7 @@ function prochainTirage(): Date {
   return d;
 }
 
-async function doScrape(supabase: ReturnType<typeof createClient>): Promise<{
+async function doScrape(supabase: ReturnType<typeof createClient>, prevDate: string | null, prevNombreTirages: number): Promise<{
   success: boolean;
   tirage: Tirage | null;
   error?: string;
@@ -253,13 +204,9 @@ async function doScrape(supabase: ReturnType<typeof createClient>): Promise<{
   try {
     const resp = await fetch(
       "https://www.secretsdujeu.com/page/jeux_loto_resultats.html",
-      {
-        headers: { "User-Agent": "Mozilla/5.0 (compatible)" },
-        signal: AbortSignal.timeout(15000),
-      }
+      { headers: { "User-Agent": "Mozilla/5.0 (compatible)" }, signal: AbortSignal.timeout(12000) }
     );
-    if (!resp.ok)
-      return { success: false, tirage: null, error: "Erreur réseau scraping" };
+    if (!resp.ok) return { success: false, tirage: null, error: "Erreur réseau scraping" };
     html = await resp.text();
   } catch (e) {
     return { success: false, tirage: null, error: (e as Error).message };
@@ -288,12 +235,8 @@ async function doScrape(supabase: ReturnType<typeof createClient>): Promise<{
     date = last.toISOString();
   }
 
-  const m =
-    /combinaison gagnante[^0-9]*(\d+)-(\d+)-(\d+)-(\d+)-(\d+)[^0-9]*num.ro Chance est le (\d+)/.exec(
-      html
-    );
-  if (!m)
-    return { success: false, tirage: null, error: "Numéros non trouvés" };
+  const m = /combinaison gagnante[^0-9]*(\d+)-(\d+)-(\d+)-(\d+)-(\d+)[^0-9]*num.ro Chance est le (\d+)/.exec(html);
+  if (!m) return { success: false, tirage: null, error: "Numéros non trouvés" };
 
   const nums = [1, 2, 3, 4, 5].map((i) => parseInt(m[i]));
   const chance = parseInt(m[6]);
@@ -304,74 +247,56 @@ async function doScrape(supabase: ReturnType<typeof createClient>): Promise<{
   let rg2: RapportGains = {};
   let nums2: number[] = [];
 
-  const urlM =
-    /"url":"(https:\/\/www\.secretsdujeu\.com\/loto\/resultat\/tirage-loto-du-[^"]+)"/.exec(
-      html
-    );
+  const urlM = /"url":"(https:\/\/www\.secretsdujeu\.com\/loto\/resultat\/tirage-loto-du-[^"]+)"/.exec(html);
   if (urlM) {
     try {
       const detailResp = await fetch(urlM[1], {
         headers: { "User-Agent": "Mozilla/5.0 (compatible)" },
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(12000),
       });
-      if (detailResp.ok && detailResp.status === 200) {
+      if (detailResp.ok) {
         const detailHtml = await detailResp.text();
         rg1 = parseMontants1er(detailHtml);
         rg2 = parseMontants2nd(detailHtml);
-        const p2 =
-          /class=["']loto-numero second-tir["'][^>]*>\s*(\d{1,2})\s*<\/p>/g;
+        const p2 = /class=["']loto-numero second-tir["'][^>]*>\s*(\d{1,2})\s*<\/p>/g;
         let mm: RegExpExecArray | null;
-        while ((mm = p2.exec(detailHtml)) !== null)
-          nums2.push(parseInt(mm[1]));
+        while ((mm = p2.exec(detailHtml)) !== null) nums2.push(parseInt(mm[1]));
       }
-    } catch (_e) {
-      /* keep defaults */
-    }
+    } catch (_e) { /* keep defaults */ }
   }
 
-  const tirage: Tirage = {
-    nums,
-    chance,
-    nums2,
-    date,
-    rapportGains: rg1,
-    rapportGains2: rg2,
-  };
+  const tirage: Tirage = { nums, chance, nums2, date, rapportGains: rg1, rapportGains2: rg2 };
   const { total, gainsDetails } = calculerGainsTirage(tirage);
   tirage.gainTotal = total;
   tirage.gainsDetails = gainsDetails;
   tirage.gains = total;
 
-  // Get current cache to detect new tirage
-  const { data: cacheRow } = await supabase
-    .from("loto_cache")
-    .select("*")
-    .eq("id", 1)
-    .maybeSingle();
-
-  const prevDate = (cacheRow as CacheRow | null)?.tirage_data?.date ?? null;
   const isNew = prevDate !== tirage.date;
-  const nombreTirages = ((cacheRow as CacheRow | null)?.nombre_tirages ?? 9) + (isNew ? 1 : 0);
+  const nombreTirages = prevNombreTirages + (isNew ? 1 : 0);
+  const dateStr = date.split("T")[0];
 
-  // Update cache
-  await supabase.from("loto_cache").upsert(
-    {
-      id: 1,
-      tirage_data: tirage,
-      cache_expiry: prochainTirage().toISOString(),
-      nombre_tirages: nombreTirages,
-    },
-    { onConflict: "id" }
-  );
-
-  // Add to historique if winning
-  if (total > 0) {
-    const dateStr = date.split("T")[0];
-    await supabase.from("loto_historique").upsert(
-      { date_tirage: dateStr, tirage_data: tirage, gain_total: total },
+  // Write all updates in parallel
+  const writes: Promise<unknown>[] = [
+    supabase.from("loto_cache").upsert(
+      { id: 1, tirage_data: tirage, cache_expiry: prochainTirage().toISOString(), nombre_tirages: nombreTirages },
+      { onConflict: "id" }
+    ),
+    // Always upsert into all_tirages (every draw)
+    supabase.from("loto_all_tirages").upsert(
+      { date_tirage: dateStr, tirage_data: tirage },
       { onConflict: "date_tirage" }
+    ),
+  ];
+  // Only insert into historique if winning
+  if (total > 0) {
+    writes.push(
+      supabase.from("loto_historique").upsert(
+        { date_tirage: dateStr, tirage_data: tirage, gain_total: total },
+        { onConflict: "date_tirage" }
+      )
     );
   }
+  await Promise.all(writes);
 
   return { success: true, tirage };
 }
@@ -389,17 +314,17 @@ Deno.serve(async (req: Request) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
-  try {
-    const distribution: Record<string, { gains: number; solde: number }> = {};
-    PARTICIPANTS.forEach((p) => { distribution[p] = { gains: 0, solde: -180 }; });
+  const distribution: Record<string, { gains: number; solde: number }> = {};
+  PARTICIPANTS.forEach((p) => { distribution[p] = { gains: 0, solde: -180 }; });
 
+  try {
     // ── LOTO-COMPLET ──────────────────────────────────────────────────────────
     if (action === "loto-complet") {
-      const { data: cacheRow } = await supabase
-        .from("loto_cache")
-        .select("*")
-        .eq("id", 1)
-        .maybeSingle();
+      // Fetch cache + historique in parallel
+      const [{ data: cacheRow }, { data: histData }] = await Promise.all([
+        supabase.from("loto_cache").select("*").eq("id", 1).maybeSingle(),
+        supabase.from("loto_historique").select("tirage_data").order("date_tirage", { ascending: true }),
+      ]);
 
       const cr = cacheRow as CacheRow | null;
       const cacheExpiry = cr?.cache_expiry ? new Date(cr.cache_expiry) : null;
@@ -413,7 +338,7 @@ Deno.serve(async (req: Request) => {
         const { total, gainsDetails } = calculerGainsTirage(tirage);
         tirage = { ...tirage, gainTotal: total, gainsDetails };
       } else {
-        const result = await doScrape(supabase);
+        const result = await doScrape(supabase, cr?.tirage_data?.date ?? null, cr?.nombre_tirages ?? 9);
         success = result.success;
         tirage = result.tirage;
         if (!result.success && cr?.tirage_data) {
@@ -424,18 +349,8 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      const { data: historique } = await supabase
-        .from("loto_historique")
-        .select("tirage_data")
-        .order("date_tirage", { ascending: true });
-
-      const allTirages = (historique ?? []).map(
-        (h: { tirage_data: Tirage }) => h.tirage_data
-      );
-      const cagnotte = allTirages.reduce(
-        (sum, t) => sum + (t.gains ?? 0),
-        0
-      );
+      const allTirages = (histData ?? []).map((h: { tirage_data: Tirage }) => h.tirage_data);
+      const cagnotte = allTirages.reduce((sum, t) => sum + (t.gains ?? 0), 0);
 
       return jsonResp({ success, tirage, historique: allTirages, distribution, cagnotte });
     }
@@ -449,25 +364,17 @@ Deno.serve(async (req: Request) => {
         return jsonResp({ error: "Unauthorized" }, 401);
       }
 
-      // Expire cache to force re-scrape
-      await supabase
-        .from("loto_cache")
-        .upsert({ id: 1, cache_expiry: null }, { onConflict: "id" });
+      // Get current cache state + historique in parallel
+      const [{ data: cacheRow }, { data: histData }] = await Promise.all([
+        supabase.from("loto_cache").select("*").eq("id", 1).maybeSingle(),
+        supabase.from("loto_historique").select("tirage_data").order("date_tirage", { ascending: true }),
+      ]);
 
-      const result = await doScrape(supabase);
+      const cr = cacheRow as CacheRow | null;
+      const result = await doScrape(supabase, cr?.tirage_data?.date ?? null, cr?.nombre_tirages ?? 9);
 
-      const { data: historique } = await supabase
-        .from("loto_historique")
-        .select("tirage_data")
-        .order("date_tirage", { ascending: true });
-
-      const allTirages = (historique ?? []).map(
-        (h: { tirage_data: Tirage }) => h.tirage_data
-      );
-      const cagnotte = allTirages.reduce(
-        (sum, t) => sum + (t.gains ?? 0),
-        0
-      );
+      const allTirages = (histData ?? []).map((h: { tirage_data: Tirage }) => h.tirage_data);
+      const cagnotte = allTirages.reduce((sum, t) => sum + (t.gains ?? 0), 0);
 
       return jsonResp({
         success: result.success,
@@ -481,81 +388,40 @@ Deno.serve(async (req: Request) => {
 
     // ── BILAN ─────────────────────────────────────────────────────────────────
     if (action === "bilan") {
-      const { data: cacheRow } = await supabase
-        .from("loto_cache")
-        .select("nombre_tirages")
-        .eq("id", 1)
-        .maybeSingle();
+      const [{ data: cacheRow }, { data: histData }] = await Promise.all([
+        supabase.from("loto_cache").select("nombre_tirages").eq("id", 1).maybeSingle(),
+        supabase.from("loto_historique").select("gain_total"),
+      ]);
 
-      const { data: historique } = await supabase
-        .from("loto_historique")
-        .select("tirage_data")
-        .order("date_tirage", { ascending: true });
+      const gainsTotal = (histData ?? []).reduce((sum: number, r: { gain_total: number }) => sum + Number(r.gain_total ?? 0), 0);
+      const tiragesEffectues = (cacheRow as { nombre_tirages: number } | null)?.nombre_tirages ?? 9;
 
-      const allTirages = (historique ?? []).map(
-        (h: { tirage_data: Tirage }) => h.tirage_data
-      );
-      const gainsTotal = allTirages.reduce(
-        (sum, t) => sum + (t.gains ?? 0),
-        0
-      );
-      const cagnotte = gainsTotal;
-      const tiragesEffectues =
-        (cacheRow as { nombre_tirages: number } | null)?.nombre_tirages ?? 9;
-
-      return jsonResp({
-        success: true,
-        gainsTotal,
-        tiragesEffectues,
-        distribution,
-        cagnotte,
-      });
+      return jsonResp({ success: true, gainsTotal, tiragesEffectues, distribution, cagnotte: gainsTotal });
     }
 
     // ── STATS ─────────────────────────────────────────────────────────────────
+    // Returns ALL tirages (for frequency stats) + winning ones only have gains
     if (action === "stats") {
-      const { data: historique } = await supabase
-        .from("loto_historique")
+      const { data: allData } = await supabase
+        .from("loto_all_tirages")
         .select("tirage_data")
         .order("date_tirage", { ascending: true });
 
-      const allTirages = (historique ?? []).map(
-        (h: { tirage_data: Tirage }) => h.tirage_data
-      );
-      const cagnotte = allTirages.reduce(
-        (sum, t) => sum + (t.gains ?? 0),
-        0
-      );
+      const allTirages = (allData ?? []).map((h: { tirage_data: Tirage }) => h.tirage_data);
+      const cagnotte = allTirages.reduce((sum, t) => sum + (t.gains ?? 0), 0);
 
-      return jsonResp({
-        success: true,
-        historique: allTirages,
-        distribution,
-        cagnotte,
-      });
+      return jsonResp({ success: true, historique: allTirages, distribution, cagnotte });
     }
 
     // ── TEST ──────────────────────────────────────────────────────────────────
     if (action === "test") {
-      const { data: cacheRow } = await supabase
-        .from("loto_cache")
-        .select("*")
-        .eq("id", 1)
-        .maybeSingle();
+      const [{ data: cacheRow }, { count }, { data: histData }] = await Promise.all([
+        supabase.from("loto_cache").select("*").eq("id", 1).maybeSingle(),
+        supabase.from("loto_historique").select("*", { count: "exact", head: true }),
+        supabase.from("loto_historique").select("gain_total"),
+      ]);
 
-      const { count } = await supabase
-        .from("loto_historique")
-        .select("*", { count: "exact", head: true });
-
-      const { data: histData } = await supabase
-        .from("loto_historique")
-        .select("gain_total");
-
-      const cagnotte = (histData ?? []).reduce(
-        (s: number, r: { gain_total: number }) => s + (r.gain_total ?? 0),
-        0
-      );
-
+      const cagnotte = (histData ?? []).reduce((s: number, r: { gain_total: number }) => s + (r.gain_total ?? 0), 0);
       const cr = cacheRow as CacheRow | null;
       return jsonResp({
         ok: true,
@@ -563,11 +429,7 @@ Deno.serve(async (req: Request) => {
         cagnotte: cagnotte.toFixed(2),
         GITHUB_TOKEN: "✅ (Supabase)",
         cache: {
-          valide: !!(
-            cr?.tirage_data &&
-            cr?.cache_expiry &&
-            new Date() < new Date(cr.cache_expiry)
-          ),
+          valide: !!(cr?.tirage_data && cr?.cache_expiry && new Date() < new Date(cr.cache_expiry)),
           expire: cr?.cache_expiry,
           tirage: cr?.tirage_data?.nums,
         },
