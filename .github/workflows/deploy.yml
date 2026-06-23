@@ -2,7 +2,7 @@ name: Build et deploiement
 
 on:
   push:
-    branches: [main]
+    branches: [principal]
 
 permissions:
   contents: write
