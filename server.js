@@ -450,9 +450,9 @@ app.get('/api/test', (req, res) => {
   res.json({ok:true,allGains:allGains.length,cagnotte:cagnotte.toFixed(2),GITHUB_TOKEN:GITHUB_TOKEN?'✅':'❌'});
 });
 
-// ============================================
+// =========================================
 // DÉMARRAGE
-// ============================================
+// =========================================
 
 // Promesse d'initialisation — les requêtes l'attendent si le serveur vient de démarrer
 let initPromise = null;
