@@ -267,7 +267,7 @@ async function doScrape(supabase: ReturnType<typeof createClient>, prevDate: str
         const parsed2 = parseMontants2nd(detailHtml);
         for (const k of Object.keys(rg1)) { if ((parsed1[k] ?? 0) > 0) rg1[k] = parsed1[k]; }
         // Init rg2 with standard fallbacks, then merge parsed non-zero values
-        rg2 = { "5": 0, "4": 500, "3": 20, "2": 4 };
+        rg2 = { "5": 0, "4": 500, "3": 20, "2": 3 };
         for (const k of Object.keys(rg2)) { if ((parsed2[k] ?? 0) > 0) rg2[k] = parsed2[k]; }
         const p2 = /class=["']loto-numero second-tir["'][^>]*>\s*(\d{1,2})\s*<\/p>/g;
         let mm: RegExpExecArray | null;
