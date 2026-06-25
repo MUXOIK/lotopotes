@@ -96,7 +96,7 @@ Tu peux :
 - Pousser sur main
 - Render redéploiera automatiquement (2-3 min)
 "
-```
+
 
 ### **Étape 3 : Priorité = Probabilités**
 
@@ -136,10 +136,4 @@ Avant d'envoyer à Bolt :
 - [ ] Tu as noté que Probabilités est la PRIORITÉ
 - [ ] Tu as expliqué à Bolt l'architecture à 3 fichiers data
 
----
 
-## 🚀 C'EST PRÊT !
-
-**Tu peux maintenant envoyer ça à Bolt et te reposer !** 😴
-
-Bolt prendra le relais et réparera la page Probabilités. 👍
