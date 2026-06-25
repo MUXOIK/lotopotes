@@ -82,7 +82,7 @@ function calculerGainsTirage(t) {
     else if (n===2&&c) g=rg['2+1']||0;
     else if (n===2) g=rg['2']||0;
     else if (n<=1&&c) g=rg['1+1']||0;
-    const estGagnant1=(n===5&&c)||n===5||(n===4&&c)||n===4||(n===3&&c)||n===3||(n===2&&c)||(n<1&&c); if (estGagnant1) { total += g; gainsDetails.push({grille: i+1, tirage: '1er', gain: g}); }
+    const estGagnant1=(n===5&&c)||n===5||(n===4&&c)||n===4||(n===3&&c)||n===3||(n===2&&c)||n===2||(n<1&&c); if (estGagnant1) { total += g; gainsDetails.push({grille: i+1, tirage: '1er', gain: g}); }
     if (a2 && rg2) {
       const n2 = t.nums2.filter(x => GRILLES[i].includes(x)).length;
       let g2 = 0;
