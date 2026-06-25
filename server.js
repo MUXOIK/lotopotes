@@ -87,8 +87,7 @@ function calculerGainsTirage(t) {
       const n2 = t.nums2.filter(x => GRILLES[i].includes(x)).length;
       let g2 = 0;
       if (n2===5) g2=rg2['5']||0;
-      else if (n2===4) g2=rg2['4']||0;
-      else if (n2===3) g2=rg2['3']||0;
+else if (n2===4) g2=rg2['4']||0;      else if (n2===3) g2=rg2['3']||0;
       else if (n2===2) g2=rg2['2']||0;
       const estGagnant2=n2===5||n2===4||n2===3||n2===2; if (estGagnant2) { total += g2; gainsDetails.push({grille: i+1, tirage: '2nd', gain: g2}); }
     }
@@ -180,7 +179,7 @@ async function sauvegarderScrape(tirage) {
   } catch(e) { console.log('[DB] ❌ Erreur sauvegarde scrape: '+e.message); }
 }
 
-async function await await ajouterAuHistorique(tirage, gainsDetails) {
+async function ajouterAuHistorique(tirage, gainsDetails) {
   if (!GITHUB_TOKEN || gainsDetails.length === 0) return;
   try {
     allGains.push(tirage);
@@ -425,10 +424,10 @@ app.get('/api/loto-complet', async (req, res) => {
     nombreTirages++;
     await sauvegarderCompteur();
   }
-if (total > 0) {}  await sauvegarderScrape(tirage);
+if (total > 0) { await sauvegarderScrape(tirage);
   
   // Si gains > 0, ajouter à data.json (historique)
-if (gainsDetails.length > 0) {}    await ajouterAuHistorique(tirage, gainsDetails);
+if (gainsDetails.length > 0) { await ajouterAuHistorique(tirage, gainsDetails);
   }
   
   res.json({success:true,tirage,historique:allGains,distribution,cagnotte});
