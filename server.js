@@ -82,7 +82,7 @@ function calculerGainsTirage(t) {
     else if (n===2&&c) g=rg['2+1']||0;
     else if (n===2) g=rg['2']||0;
     else if (n<=1&&c) g=rg['1+1']||0;
-    if (g > 0) { total += g; gainsDetails.push({grille: i+1, tirage: '1er', gain: g}); }
+    const estGagnant1=(n===5&&c)||n===5||(n===4&&c)||n===4||(n===3&&c)||n===3||(n===2&&c)||(n<1&&c); if (estGagnant1) { total += g; gainsDetails.push({grille: i+1, tirage: '1er', gain: g}); }
     if (a2 && rg2) {
       const n2 = t.nums2.filter(x => GRILLES[i].includes(x)).length;
       let g2 = 0;
@@ -90,7 +90,7 @@ function calculerGainsTirage(t) {
       else if (n2===4) g2=rg2['4']||0;
       else if (n2===3) g2=rg2['3']||0;
       else if (n2===2) g2=rg2['2']||0;
-      if (g2 > 0) { total += g2; gainsDetails.push({grille: i+1, tirage: '2nd', gain: g2}); }
+      const estGagnant2=n2===5||n2===4||n2===3||n2===2; if (estGagnant2) { total += g2; gainsDetails.push({grille: i+1, tirage: '2nd', gain: g2}); }
     }
   }
   return {total, gainsDetails};
