@@ -246,10 +246,7 @@ async function doScrape(supabase: ReturnType<typeof createClient>, prevDate: str
 
   const nums = [1, 2, 3, 4, 5].map((i) => parseInt(m[i]));
   const chance = parseInt(m[6]);
-  let rg1: RapportGains = {
-    "5+1": 0, "5": 100000, "4+1": 1000, "4": 500,
-    "3+1": 50, "3": 20, "2+1": 9, "2": 4, "1+1": 2.2,
-  };
+  let rg1: RapportGains = { "5+1": 0, "5": 0, "4+1": 0, "4": 0, "3+1": 0, "3": 0, "2+1": 0, "2": 0, "1+1": 0 };
   let rg2: RapportGains = {};
   let nums2: number[] = [];
 
@@ -262,18 +259,14 @@ async function doScrape(supabase: ReturnType<typeof createClient>, prevDate: str
       });
       if (detailResp.ok) {
         const detailHtml = await detailResp.text();
-        // Merge: keep defaults, only overwrite with non-zero parsed values
-        const parsed1 = parseMontants1er(detailHtml);
-        const parsed2 = parseMontants2nd(detailHtml);
-        for (const k of Object.keys(rg1)) { if ((parsed1[k] ?? 0) > 0) rg1[k] = parsed1[k]; }
-        // Init rg2 with standard fallbacks, then merge parsed non-zero values
-        rg2 = { "5": 0, "4": 500, "3": 20, "2": 3 };
-        for (const k of Object.keys(rg2)) { if ((parsed2[k] ?? 0) > 0) rg2[k] = parsed2[k]; }
+        // Use only real FDJ values — no defaults
+        rg1 = parseMontants1er(detailHtml);
+        rg2 = parseMontants2nd(detailHtml);
         const p2 = /class=["']loto-numero second-tir["'][^>]*>\s*(\d{1,2})\s*<\/p>/g;
         let mm: RegExpExecArray | null;
         while ((mm = p2.exec(detailHtml)) !== null) nums2.push(parseInt(mm[1]));
       }
-    } catch (_e) { /* keep defaults */ }
+    } catch (_e) { /* rg1/rg2 stay at zero — no invented defaults */ }
   }
 
   const tirage: Tirage = { nums, chance, nums2, date, rapportGains: rg1, rapportGains2: rg2 };
