@@ -62,7 +62,9 @@ interface CacheRow {
 function calculerGainsTirage(t: Tirage): { total: number; gainsDetails: GainDetail[] } {
   const rg = t.rapportGains || {};
   const rg2 = t.rapportGains2 || {};
-  const a2 = t.nums2 && t.nums2.length === 5 && Object.values(rg2).some((v) => (v as number) > 0);
+  // Enable 2nd tirage check based on nums2 length only — not rapportGains2 values
+  // (scraping can fail and return all zeros, but the 2nd tirage still exists)
+  const a2 = t.nums2 && t.nums2.length === 5;
   let total = 0;
   const gainsDetails: GainDetail[] = [];
 
@@ -79,7 +81,10 @@ function calculerGainsTirage(t: Tirage): { total: number; gainsDetails: GainDeta
     else if (n === 2 && c) g = rg["2+1"] || 0;
     else if (n === 2) g = rg["2"] || 0;
     else if (n <= 1 && c) g = rg["1+1"] || 0;
-    if (g > 0) {
+    // Add grille based on winning combination — even if gain is 0 (failed scraping)
+    const isWinning1 = (n === 5 && c) || n === 5 || (n === 4 && c) || n === 4 ||
+      (n === 3 && c) || n === 3 || (n === 2 && c) || n === 2 || (n <= 1 && c);
+    if (isWinning1) {
       total += g;
       gainsDetails.push({ grille: i + 1, tirage: "1er", gain: g });
     }
@@ -90,7 +95,8 @@ function calculerGainsTirage(t: Tirage): { total: number; gainsDetails: GainDeta
       else if (n2 === 4) g2 = rg2["4"] || 0;
       else if (n2 === 3) g2 = rg2["3"] || 0;
       else if (n2 === 2) g2 = rg2["2"] || 0;
-      if (g2 > 0) {
+      const isWinning2 = n2 === 5 || n2 === 4 || n2 === 3 || n2 === 2;
+      if (isWinning2) {
         total += g2;
         gainsDetails.push({ grille: i + 1, tirage: "2nd", gain: g2 });
       }
@@ -256,8 +262,13 @@ async function doScrape(supabase: ReturnType<typeof createClient>, prevDate: str
       });
       if (detailResp.ok) {
         const detailHtml = await detailResp.text();
-        rg1 = parseMontants1er(detailHtml);
-        rg2 = parseMontants2nd(detailHtml);
+        // Merge: keep defaults, only overwrite with non-zero parsed values
+        const parsed1 = parseMontants1er(detailHtml);
+        const parsed2 = parseMontants2nd(detailHtml);
+        for (const k of Object.keys(rg1)) { if ((parsed1[k] ?? 0) > 0) rg1[k] = parsed1[k]; }
+        // Init rg2 with standard fallbacks, then merge parsed non-zero values
+        rg2 = { "5": 0, "4": 500, "3": 20, "2": 4 };
+        for (const k of Object.keys(rg2)) { if ((parsed2[k] ?? 0) > 0) rg2[k] = parsed2[k]; }
         const p2 = /class=["']loto-numero second-tir["'][^>]*>\s*(\d{1,2})\s*<\/p>/g;
         let mm: RegExpExecArray | null;
         while ((mm = p2.exec(detailHtml)) !== null) nums2.push(parseInt(mm[1]));
