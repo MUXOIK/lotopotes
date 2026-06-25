@@ -180,7 +180,7 @@ async function sauvegarderScrape(tirage) {
   } catch(e) { console.log('[DB] ❌ Erreur sauvegarde scrape: '+e.message); }
 }
 
-async function ajouterAuHistorique(tirage, gainsDetails) {
+async function await await ajouterAuHistorique(tirage, gainsDetails) {
   if (!GITHUB_TOKEN || gainsDetails.length === 0) return;
   try {
     allGains.push(tirage);
@@ -425,13 +425,10 @@ app.get('/api/loto-complet', async (req, res) => {
     nombreTirages++;
     await sauvegarderCompteur();
   }
-  
-  // Sauvegarder dans data-scrape.json
-  await sauvegarderScrape(tirage);
+if (total > 0) {}  await sauvegarderScrape(tirage);
   
   // Si gains > 0, ajouter à data.json (historique)
-  if (total > 0) {
-    await ajouterAuHistorique(tirage, gainsDetails);
+if (gainsDetails.length > 0) {}    await ajouterAuHistorique(tirage, gainsDetails);
   }
   
   res.json({success:true,tirage,historique:allGains,distribution,cagnotte});
