@@ -424,12 +424,13 @@ app.get('/api/loto-complet', async (req, res) => {
     nombreTirages++;
     await sauvegarderCompteur();
   }
-if (total > 0) { await sauvegarderScrape(tirage);
-  
-  // Si gains > 0, ajouter à data.json (historique)
-if (gainsDetails.length > 0) { await ajouterAuHistorique(tirage, gainsDetails);
+if (total > 0) {
+    await sauvegarderScrape(tirage);
+    if (gainsDetails.length > 0) {
+      await ajouterAuHistorique(tirage, gainsDetails);
+    }
   }
-  
+
   res.json({success:true,tirage,historique:allGains,distribution,cagnotte});
 });
 
