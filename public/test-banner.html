@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Test — Bandeau ON A GAGNÉ</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          animation: {
+            'pulse-once': 'pulse 1s ease-in-out 1',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background: #030712; }
+  </style>
+</head>
+<body class="min-h-screen bg-gray-950 text-white p-4 font-sans">
+
+  <div class="max-w-lg mx-auto space-y-6">
+
+    <!-- En-tête -->
+    <div class="bg-gradient-to-r from-blue-950 via-blue-900 to-blue-950 rounded-2xl p-5 border border-yellow-500/50">
+      <div class="flex items-center gap-3">
+        <span class="text-3xl">🎲</span>
+        <div>
+          <h1 class="text-lg font-bold text-yellow-400">LES POTES MILLIONNAIRES</h1>
+          <p class="text-blue-300/70 text-xs mt-0.5">Jeu d'essai — Bandeau "ON A GAGNÉ !"</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- NOTE technique -->
+    <div class="bg-gray-800 rounded-xl p-3 border border-gray-600 text-xs text-gray-400 leading-relaxed">
+      <p class="font-semibold text-gray-300 mb-1">Note sur les données de test</p>
+      Les 5 numéros tirés sont partagés entre toutes les grilles.
+      Il est physiquement impossible d'avoir simultanément grille 1 → 4 matchs <em>et</em> grille 2 → 3 matchs
+      (cela nécessiterait 7 numéros distincts dans 5 boules). Les scénarios ci-dessous représentent
+      les combinaisons les plus riches réalisables avec les grilles fixes du syndicat.
+      <br /><strong class="text-yellow-400">Ouvrir la console (F12) pour les logs détaillés.</strong>
+    </div>
+
+    <!-- CAS 1 -->
+    <section>
+      <h2 class="text-sm font-bold text-yellow-300 mb-1 uppercase tracking-wider">
+        Cas 1 — 3 grilles gagnantes · 1er tirage uniquement
+      </h2>
+      <div class="bg-gray-800 rounded-lg p-2 mb-2 text-xs text-gray-400 font-mono">
+        nums=[7,6,3,12,15] chance=4
+        · Grille 1 : 2 matchs → "2" (4,40€)
+        · Grille 2 : 2 matchs → "2" (4,40€)
+        · Grille 3 : 1 match+chance → "1+1" (2,20€)
+        · Total : 11,00€
+      </div>
+      <div id="cas1-banner"></div>
+    </section>
+
+    <!-- CAS 2 -->
+    <section>
+      <h2 class="text-sm font-bold text-yellow-300 mb-1 uppercase tracking-wider">
+        Cas 2 — Gains sur 1er ET 2nd tirage du même jour
+      </h2>
+      <div class="bg-gray-800 rounded-lg p-2 mb-2 text-xs text-gray-400 font-mono">
+        1er : nums=[7,12,23,6,15] chance=9
+        · Grille 1 : 3+1 → 50,00€ · Grille 2 : 2 → 4,40€
+        2nd : nums2=[3,18,8,19,32]
+        · Grille 3 : 2 → 4,40€ · Grille 4 : 3 → 15,00€
+        · Total : 73,80€
+      </div>
+      <div id="cas2-banner"></div>
+    </section>
+
+    <!-- CAS 3 -->
+    <section>
+      <h2 class="text-sm font-bold text-yellow-300 mb-1 uppercase tracking-wider">
+        Cas 3 — Aucune grille gagnante
+      </h2>
+      <div class="bg-gray-800 rounded-lg p-2 mb-2 text-xs text-gray-400 font-mono">
+        nums=[1,2,10,11,13] chance=2 · 0 match sur toutes les grilles
+        · gainTotal = 0 → bandeau masqué
+      </div>
+      <div id="cas3-banner"></div>
+    </section>
+
+  </div>
+
+  <script>
+    // ── Données fixes du jeu (identiques à loto-scraper/index.ts) ──────────────
+    const GRILLES = [
+      [7, 12, 23, 34, 45],
+      [6, 15, 28, 39, 48],
+      [3, 18, 31, 42, 49],
+      [8, 19, 32, 41, 46],
+      [5, 22, 29, 35, 44],
+    ];
+    const CHANCES = [9, 6, 4, 1, 7];
+
+    const RG  = { "5+1": 2000000, "5": 100000, "4+1": 1000, "4": 400, "3+1": 50, "3": 15, "2+1": 6, "2": 4.4, "1+1": 2.2 };
+    const RG2 = { "5": 100000, "4": 400, "3": 15, "2": 4.4 };
+
+    // ── Copie exacte de calculerGainsTirage ────────────────────────────────────
+    function calculerGainsTirage(t) {
+      const rg = t.rapportGains || {};
+      const rg2 = t.rapportGains2 || {};
+      const a2 = t.nums2 && t.nums2.length === 5;
+      let total = 0;
+      const gainsDetails = [];
+      for (let i = 0; i < GRILLES.length; i++) {
+        const n = t.nums.filter(x => GRILLES[i].includes(x)).length;
+        const c = CHANCES[i] === t.chance;
+        let g = 0;
+        if      (n === 5 && c) g = rg["5+1"] || 0;
+        else if (n === 5)      g = rg["5"]   || 0;
+        else if (n === 4 && c) g = rg["4+1"] || 0;
+        else if (n === 4)      g = rg["4"]   || 0;
+        else if (n === 3 && c) g = rg["3+1"] || 0;
+        else if (n === 3)      g = rg["3"]   || 0;
+        else if (n === 2 && c) g = rg["2+1"] || 0;
+        else if (n === 2)      g = rg["2"]   || 0;
+        else if (n <= 1 && c)  g = rg["1+1"] || 0;
+        const win = (n===5&&c)||n===5||(n===4&&c)||n===4||(n===3&&c)||n===3||(n===2&&c)||n===2||(n<=1&&c);
+        if (win) { total += g; gainsDetails.push({ grille: i + 1, tirage: "1er", gain: g }); }
+        if (a2) {
+          const n2 = t.nums2.filter(x => GRILLES[i].includes(x)).length;
+          let g2 = 0;
+          if      (n2 === 5) g2 = rg2["5"] || 0;
+          else if (n2 === 4) g2 = rg2["4"] || 0;
+          else if (n2 === 3) g2 = rg2["3"] || 0;
+          else if (n2 === 2) g2 = rg2["2"] || 0;
+          if (n2 >= 2) { total += g2; gainsDetails.push({ grille: i + 1, tirage: "2nd", gain: g2 }); }
+        }
+      }
+      return { total, gainsDetails };
+    }
+
+    // ── showGain (SectionAccueil.tsx:38-40) ────────────────────────────────────
+    function showGain(tirage) {
+      return (tirage.gainTotal ?? 0) > 0 &&
+        tirage.date &&
+        new Date(tirage.date) >= new Date("2026-06-01");
+    }
+
+    // ── Rendu du bandeau (SectionAccueil.tsx:46-57) ────────────────────────────
+    function renderBanner(tirage, containerId) {
+      const container = document.getElementById(containerId);
+      if (!showGain(tirage)) {
+        container.innerHTML = `
+          <div class="rounded-xl p-4 border-2 border-dashed border-gray-600 text-center text-gray-500 text-sm">
+            Bandeau masqué — gainTotal = 0
+          </div>`;
+        console.log(`[${containerId}] showGain = false → bandeau absent`);
+        return;
+      }
+      const detailHtml = tirage.gainsDetails.map((g, i) =>
+        `${i > 0 ? ' | ' : ''}Grille ${g.grille} (${g.tirage}) → <strong>${g.gain.toFixed(2)}€</strong>`
+      ).join('');
+      container.innerHTML = `
+        <div class="bg-gradient-to-r from-yellow-500 to-amber-600 rounded-xl p-4 border-2 border-yellow-300 text-center">
+          <div class="text-3xl mb-1">🎉🏆🎉</div>
+          <div class="text-xl font-bold text-gray-900">ON A GAGNÉ !</div>
+          <div class="text-sm text-gray-900 mt-1">${detailHtml}</div>
+          <div class="text-lg font-bold text-gray-900 mt-2">Total : ${tirage.gainTotal.toFixed(2)}€ 🎰</div>
+        </div>`;
+      console.log(`[${containerId}] showGain = true → bandeau visible`);
+      console.log(`  gainsDetails:`, tirage.gainsDetails);
+      console.log(`  gainTotal: ${tirage.gainTotal.toFixed(2)}€`);
+    }
+
+    // ── Exécution ──────────────────────────────────────────────────────────────
+    const DATE_TEST = "2026-06-26T20:50:00.000Z";
+
+    console.group("=== TEST BANDEAU ON A GAGNÉ — 3 scénarios ===");
+
+    // Cas 1
+    console.group("CAS 1 — 3 grilles gagnantes (1er tirage)");
+    const t1 = { nums:[7,6,3,12,15], chance:4, nums2:[], date:DATE_TEST, rapportGains:RG, rapportGains2:{} };
+    const r1 = calculerGainsTirage(t1); t1.gainTotal = r1.total; t1.gainsDetails = r1.gainsDetails;
+    console.log("nums:", t1.nums, "chance:", t1.chance);
+    console.log("gainsDetails:", t1.gainsDetails);
+    console.log("gainTotal:", t1.gainTotal.toFixed(2)+"€");
+    console.assert(showGain(t1) === true,        "showGain doit être true");
+    console.assert(t1.gainsDetails.length === 3, "3 grilles doivent gagner");
+    console.assert(t1.gainTotal === 11,           "total doit être 11€");
+    renderBanner(t1, "cas1-banner");
+    console.groupEnd();
+
+    // Cas 2
+    console.group("CAS 2 — 1er ET 2nd tirage");
+    const t2 = { nums:[7,12,23,6,15], chance:9, nums2:[3,18,8,19,32], date:DATE_TEST, rapportGains:RG, rapportGains2:RG2 };
+    const r2 = calculerGainsTirage(t2); t2.gainTotal = r2.total; t2.gainsDetails = r2.gainsDetails;
+    console.log("nums:", t2.nums, "chance:", t2.chance, "nums2:", t2.nums2);
+    console.log("gainsDetails:", t2.gainsDetails);
+    console.log("gainTotal:", t2.gainTotal.toFixed(2)+"€");
+    console.assert(showGain(t2) === true,        "showGain doit être true");
+    console.assert(t2.gainsDetails.length === 4, "4 entrées gainsDetails");
+    console.assert(t2.gainTotal === 73.8,         "total doit être 73.80€");
+    console.assert(t2.gainsDetails.filter(d=>d.tirage==="1er").length === 2, "2 gains sur 1er tirage");
+    console.assert(t2.gainsDetails.filter(d=>d.tirage==="2nd").length === 2, "2 gains sur 2nd tirage");
+    renderBanner(t2, "cas2-banner");
+    console.groupEnd();
+
+    // Cas 3
+    console.group("CAS 3 — Aucune grille gagnante");
+    const t3 = { nums:[1,2,10,11,13], chance:2, nums2:[], date:DATE_TEST, rapportGains:RG, rapportGains2:{} };
+    const r3 = calculerGainsTirage(t3); t3.gainTotal = r3.total; t3.gainsDetails = r3.gainsDetails;
+    console.log("nums:", t3.nums, "chance:", t3.chance);
+    console.log("gainsDetails:", t3.gainsDetails, "gainTotal:", t3.gainTotal);
+    console.assert(showGain(t3) === false,       "showGain doit être false");
+    console.assert(t3.gainsDetails.length === 0, "0 grille gagnante");
+    console.assert(t3.gainTotal === 0,            "total doit être 0€");
+    renderBanner(t3, "cas3-banner");
+    console.groupEnd();
+
+    console.groupEnd();
+  </script>
+</body>
+</html>
