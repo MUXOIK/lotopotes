@@ -356,6 +356,22 @@ Deno.serve(async (req: Request) => {
       const allTirages = (histData ?? []).map((h: { tirage_data: Tirage }) => h.tirage_data);
       const cagnotte = allTirages.reduce((sum, t) => sum + (t.gains ?? 0), 0);
 
+      // Prefer gainsDetails from historique when available — a forced scrape can
+      // return partial rapportGains (zeros) and overwrite correct values in cache.
+      if (tirage) {
+        const tirageDate = tirage.date?.split("T")[0];
+        const histEntry = allTirages.find(
+          (t: Tirage) => t.date?.split("T")[0] === tirageDate && (t.gains ?? 0) > 0
+        );
+        if (histEntry) {
+          tirage = {
+            ...tirage,
+            gainTotal: histEntry.gains ?? tirage.gainTotal,
+            gainsDetails: histEntry.gainsDetails ?? tirage.gainsDetails,
+          };
+        }
+      }
+
       return jsonResp({ success, tirage, historique: allTirages, distribution, cagnotte });
     }
 
