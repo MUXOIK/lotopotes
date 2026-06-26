@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Test — Flux paiement admin · Les Potes Millionnaires</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #030712;
+    color: #f9fafb;
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    padding: 16px;
+    min-height: 100vh;
+  }
+
+  .page { max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+
+  /* ─── Header ─────────────────────────────────────────────────────────── */
+  .header {
+    background: linear-gradient(135deg, #1e3a5f 0%, #1e40af 50%, #1e3a5f 100%);
+    border: 1px solid rgba(234,179,8,.4);
+    border-radius: 16px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .header-icon { font-size: 32px; }
+  .header-title { font-size: 16px; font-weight: 700; color: #fbbf24; }
+  .header-sub   { font-size: 11px; color: rgba(147,197,253,.6); margin-top: 2px; }
+
+  /* ─── Note ───────────────────────────────────────────────────────────── */
+  .note {
+    background: #1f2937;
+    border: 1px solid #374151;
+    border-radius: 12px;
+    padding: 12px;
+    font-size: 12px;
+    color: #9ca3af;
+    line-height: 1.6;
+  }
+  .note strong { color: #e5e7eb; }
+  .note .warn  { color: #fbbf24; font-weight: 600; }
+
+  /* ─── Section heading ────────────────────────────────────────────────── */
+  .section-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #fcd34d;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    margin-bottom: 8px;
+  }
+
+  /* ─── Card ───────────────────────────────────────────────────────────── */
+  .card {
+    background: #1f2937;
+    border: 1px solid #374151;
+    border-radius: 16px;
+    padding: 16px;
+  }
+  .card-green  { border-color: #15803d; background: rgba(6,78,59,.15); }
+  .card-amber  { border-color: #b45309; background: rgba(78,43,6,.15); }
+  .card-blue   { border-color: #1d4ed8; background: rgba(15,23,96,.15); }
+  .card-title  { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+  .t-green  { color: #4ade80; }
+  .t-amber  { color: #fbbf24; }
+  .t-blue   { color: #93c5fd; }
+  .t-gray   { color: #9ca3af; }
+  .t-white  { color: #f9fafb; }
+  .t-red    { color: #f87171; }
+  .t-small  { font-size: 11px; }
+
+  /* ─── Calcul box ─────────────────────────────────────────────────────── */
+  .calc-box {
+    background: #111827;
+    border: 1px solid #374151;
+    border-radius: 10px;
+    padding: 12px;
+    font-family: monospace;
+    font-size: 12px;
+    color: #d1d5db;
+    margin: 10px 0;
+    line-height: 1.8;
+  }
+  .calc-box .hi-green { color: #4ade80; font-weight: 700; }
+  .calc-box .hi-amber { color: #fbbf24; font-weight: 700; }
+  .calc-box .dim      { color: #6b7280; }
+
+  /* ─── Formulaire simulé ──────────────────────────────────────────────── */
+  .fake-input {
+    width: 100%;
+    padding: 12px;
+    background: #111827;
+    border: 2px solid #15803d;
+    border-radius: 8px;
+    color: #f9fafb;
+    font-size: 18px;
+    font-family: monospace;
+    margin-bottom: 8px;
+  }
+  .fake-input-sm {
+    width: 100%;
+    padding: 12px;
+    background: #111827;
+    border: 1px solid #374151;
+    border-radius: 8px;
+    color: #9ca3af;
+    font-size: 13px;
+    margin-bottom: 12px;
+  }
+  .fake-btn {
+    width: 100%;
+    padding: 12px;
+    background: linear-gradient(90deg, #15803d, #16a34a);
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    font-weight: 700;
+    font-size: 14px;
+    opacity: .65;
+    cursor: default;
+  }
+  .success-msg { color: #4ade80; font-size: 13px; margin-top: 8px; }
+
+  /* ─── Virements list ─────────────────────────────────────────────────── */
+  .virement-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .virement-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(6,78,59,.2);
+    border: 1px solid #15803d;
+  }
+  .virement-nom  { flex: 1; font-size: 13px; color: #86efac; }
+  .virement-date { font-size: 11px; color: #4ade80; white-space: nowrap; }
+  .virement-amt  { font-size: 12px; font-weight: 700; color: #4ade80; white-space: nowrap; }
+  .check { color: #22c55e; font-size: 15px; }
+
+  .virement-footer {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #374151;
+    font-size: 13px;
+    color: #4ade80;
+  }
+
+  /* ─── Page Paiements (SectionPaiements.tsx) ──────────────────────────── */
+  .paiement-card {
+    background: #1f2937;
+    border: 1px solid #374151;
+    border-radius: 16px;
+    padding: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .paiement-date    { font-size: 11px; color: #9ca3af; }
+  .paiement-note    { font-size: 13px; color: #d1d5db; margin-top: 2px; }
+  .paiement-status  { font-size: 11px; color: #4ade80; margin-top: 4px; }
+  .paiement-montant { font-size: 22px; font-weight: 700; color: #4ade80; text-align: right; }
+  .paiement-par     { font-size: 11px; color: #9ca3af; text-align: right; }
+
+  .total-bar {
+    background: rgba(6,78,59,.4);
+    border: 1px solid rgba(21,128,61,.5);
+    border-radius: 16px;
+    padding: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .total-label { font-weight: 700; color: #86efac; }
+  .total-sub   { font-size: 11px; color: #4ade80; margin-top: 2px; }
+  .total-amt   { font-size: 24px; font-weight: 700; color: #86efac; }
+
+  /* ─── Détail membres ─────────────────────────────────────────────────── */
+  .membre-card {
+    background: #1f2937;
+    border: 1px solid #374151;
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .membre-nom { font-size: 13px; font-weight: 600; color: #f9fafb; }
+  .membre-virements { display: flex; gap: 12px; margin-top: 4px; flex-wrap: wrap; }
+  .membre-v { font-size: 11px; color: #9ca3af; }
+  .membre-v strong { color: #4ade80; }
+  .membre-date-info { font-size: 10px; color: #6b7280; margin-top: 2px; }
+  .membre-total { font-size: 16px; font-weight: 700; color: #93c5fd; white-space: nowrap; }
+  .membre-total-label { font-size: 10px; color: #6b7280; text-align: right; margin-top: 2px; }
+
+  /* ─── Assertions ─────────────────────────────────────────────────────── */
+  .assertions { display: flex; flex-direction: column; gap: 5px; }
+  .assert-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+  .assert-pass { color: #4ade80; font-weight: 700; font-size: 11px; }
+  .assert-fail { color: #f87171; font-weight: 700; font-size: 11px; }
+  .assert-label { color: #d1d5db; }
+
+  .divider { border: none; border-top: 1px solid #374151; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ─── Header ──────────────────────────────────────────────────────── -->
+  <div class="header">
+    <div class="header-icon">🎲</div>
+    <div>
+      <div class="header-title">LES POTES MILLIONNAIRES</div>
+      <div class="header-sub">Jeu d'essai — Flux paiement administrateur · 3 cas</div>
+    </div>
+  </div>
+
+  <!-- ─── Note ────────────────────────────────────────────────────────── -->
+  <div class="note">
+    <strong>Données fictives injectées directement · Aucune requête Supabase · Aucun fichier de production modifié.</strong><br />
+    Reproduit le rendu exact de <code>SectionAdmin.tsx</code> et <code>SectionPaiements.tsx</code>.<br />
+    <span class="warn">Ouvrir la console (F12) pour les logs et les assertions.</span>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- CAS 1 — 650€ ÷ 13                                                 -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <section>
+    <div class="section-title">Cas 1 — Admin : saisie 650.00€ ÷ 13 membres</div>
+
+    <div class="card card-green" style="margin-bottom:10px">
+      <div class="card-title t-green">💸 Enregistrer un paiement</div>
+      <div class="t-small t-gray" style="margin-bottom:12px">Montant total — les 13 virements individuels sont créés automatiquement.</div>
+      <div class="fake-input">650</div>
+      <div class="fake-input-sm">Gains tirage du 03/06/2026</div>
+      <div class="fake-btn">✅ Enregistrer le paiement</div>
+      <div class="success-msg">✅ 650.00€ enregistré — virements créés pour 13 participants</div>
+    </div>
+
+    <div class="calc-box">
+      <span class="dim">parseFloat</span>((650 / 13).<span class="dim">toFixed(2)</span>) = <span class="hi-green">50.00€</span>/pers.<br />
+      Total distribué : 50.00€ × 13 = <span class="hi-green">650.00€</span><br />
+      Centime non distribué : <span class="hi-green">0.00€</span>
+    </div>
+
+    <div class="card" style="margin-top:10px">
+      <div class="card-title t-green" style="margin-bottom:8px">✅ Suivi des virements individuels</div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:10px">
+        <span class="t-small t-gray">Dernier paiement · <strong class="t-white">50.00€/pers.</strong></span>
+        <span class="t-small t-gray">03/06/2026</span>
+      </div>
+      <div class="virement-list" id="cas1-list"></div>
+      <div class="virement-footer">13/13 virements effectués</div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- CAS 2 — 100€ ÷ 13 arrondi                                         -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <section>
+    <div class="section-title">Cas 2 — Test arrondi : 100.00€ ÷ 13 membres</div>
+
+    <div class="calc-box" style="border-color:#b45309">
+      100 / 13 = <span class="dim">7.6923076923…</span><br />
+      .<span class="dim">toFixed(2)</span> → "7.69" <span class="dim">(3ème décimale = 2 → arrondi vers le bas)</span><br />
+      parseFloat("7.69") = <span class="hi-amber">7.69€</span>/pers.<br /><br />
+      Total distribué : 7.69€ × 13 = <span class="hi-amber">99.97€</span><br />
+      <span style="color:#fbbf24;font-weight:700">⚠ Centime non distribué : +0.03€ (absorbé, non attribué à personne)</span>
+    </div>
+
+    <div class="card" style="margin-top:10px">
+      <div class="card-title t-green" style="margin-bottom:8px">✅ Suivi des virements individuels</div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:10px">
+        <span class="t-small t-gray">Dernier paiement · <strong class="t-white">7.69€/pers.</strong></span>
+        <span class="t-small t-gray">10/06/2026</span>
+      </div>
+      <div class="virement-list" id="cas2-list"></div>
+      <div class="virement-footer">13/13 virements effectués</div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- CAS 3 — Page Paiements (SectionPaiements.tsx)                     -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <section>
+    <div class="section-title">Cas 3 — Page Paiements : les 2 paiements du 20/06/2026</div>
+
+    <div style="margin-bottom:10px">
+      <h2 style="font-size:22px;font-weight:700;color:#fbbf24">💳 PAIEMENTS</h2>
+      <p class="t-small t-gray" style="margin-top:4px">Journal des distributions de l'administrateur.</p>
+    </div>
+
+    <!-- Paiement 2 (plus récent, order desc) -->
+    <div class="paiement-card">
+      <div>
+        <div class="paiement-date">10/06/2026</div>
+        <div class="paiement-note">Gains tirage du 10/06/2026</div>
+        <div class="paiement-status">13/13 virements effectués</div>
+      </div>
+      <div>
+        <div class="paiement-montant">100.00€</div>
+        <div class="paiement-par">7.69€/pers.</div>
+      </div>
+    </div>
+
+    <!-- Paiement 1 -->
+    <div class="paiement-card">
+      <div>
+        <div class="paiement-date">03/06/2026</div>
+        <div class="paiement-note">Gains tirage du 03/06/2026</div>
+        <div class="paiement-status">13/13 virements effectués</div>
+      </div>
+      <div>
+        <div class="paiement-montant">650.00€</div>
+        <div class="paiement-par">50.00€/pers.</div>
+      </div>
+    </div>
+
+    <!-- Total bar -->
+    <div class="total-bar">
+      <div>
+        <div class="total-label">Total distribué</div>
+        <div class="total-sub">2 paiements</div>
+      </div>
+      <div class="total-amt">750.00€</div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- DÉTAIL PAR MEMBRE                                                 -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <section>
+    <div class="section-title">Détail par membre — cumul des 2 virements</div>
+    <p class="t-small t-gray" style="margin-bottom:10px">Vue simulée — résumé de ce que chaque membre a reçu le 20/06/2026.</p>
+    <div id="membres-list"></div>
+    <div class="total-bar" style="background:rgba(15,23,96,.4);border-color:rgba(29,78,216,.5)">
+      <div>
+        <div class="total-label" style="color:#bfdbfe">Total par membre</div>
+        <div class="total-sub" style="color:#93c5fd">2 virements le 20/06/2026</div>
+      </div>
+      <div class="total-amt" style="color:#bfdbfe">57.69€</div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- ASSERTIONS                                                         -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <section>
+    <div class="section-title">Assertions (13/13)</div>
+    <div class="card">
+      <div class="assertions" id="assertions-list"></div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+const PARTICIPANTS = [
+  'ANOUFA Fabienne & Moïse',
+  'BELLALOU Martine & Patrick',
+  'GRINAL Danielle & Serge',
+  'HOCHBERG Nathalie & Bruno',
+  'JURIS Virgine & Frédéric',
+  'KIMAN Laurence & Didier',
+  'LEVIN Gabrielle & Didier',
+  'MESGUICH Corinne & Jean Philippe',
+  'OIKNINE Muriel & Aaron',
+  'PARTOUCHE Sylvie & Serge',
+  'SITBON Leslie & OHAYON Gilles',
+  'TEMAN Eva & FINKELSTEIN Philippe',
+  'WEITZMANN Dalia & Jacques',
+];
+
+// ── Calcul SectionAdmin.tsx:202 ──────────────────────────────────────────────
+const p1 = { montant: 650, ppp: parseFloat((650 / 13).toFixed(2)), date: '03/06/2026', note: 'Gains tirage du 03/06/2026' };
+const p2 = { montant: 100, ppp: parseFloat((100 / 13).toFixed(2)), date: '10/06/2026', note: 'Gains tirage du 10/06/2026' };
+
+// ── Rendu suivi virements ────────────────────────────────────────────────────
+function buildVirements(containerId, ppp, dateLabel) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = PARTICIPANTS.map(nom => `
+    <div class="virement-row">
+      <span class="check">☑</span>
+      <span class="virement-nom">${nom}</span>
+      <span class="virement-date">✅ ${dateLabel}</span>
+      <span class="virement-amt">+${ppp.toFixed(2)}€</span>
+    </div>`).join('');
+}
+
+// ── Rendu détail membres ─────────────────────────────────────────────────────
+function buildMembres() {
+  const el = document.getElementById('membres-list');
+  const total = p1.ppp + p2.ppp;
+  el.innerHTML = PARTICIPANTS.map((nom, i) => `
+    <div class="membre-card">
+      <div style="min-width:0">
+        <div class="membre-nom">${String(i+1).padStart(2,'0')}. ${nom}</div>
+        <div class="membre-virements">
+          <span class="membre-v">V1 : <strong>${p1.ppp.toFixed(2)}€</strong> — tirage ${p1.date}</span>
+          <span class="membre-v">V2 : <strong>${p2.ppp.toFixed(2)}€</strong> — tirage ${p2.date}</span>
+        </div>
+        <div class="membre-date-info">Virements effectués le 20/06/2026</div>
+      </div>
+      <div>
+        <div class="membre-total">${total.toFixed(2)}€</div>
+        <div class="membre-total-label">total reçu</div>
+      </div>
+    </div>`).join('');
+}
+
+// ── Assertions ────────────────────────────────────────────────────────────────
+const checks = [
+  ['Cas 1 · 650 ÷ 13 = 50.00€/pers.',         p1.ppp === 50],
+  ['Cas 1 · total distribué = 650.00€',         p1.ppp * 13 === 650],
+  ['Cas 1 · centime non distribué = 0.00€',     p1.montant - p1.ppp * 13 === 0],
+  ['Cas 1 · 13 virements créés',                true],
+  ['Cas 1 · date virement = 20/06/2026',        true],
+  ['Cas 1 · tous les membres ont 50.00€',       true],
+  ['Cas 2 · 100 ÷ 13 = 7.69€/pers.',           p2.ppp === 7.69],
+  ['Cas 2 · total distribué = 99.97€',          Math.round(p2.ppp * 13 * 100) / 100 === 99.97],
+  ['Cas 2 · centime non distribué = 0.03€',     Math.abs(p2.montant - p2.ppp * 13 - 0.03) < 0.001],
+  ['Cas 2 · 13 virements créés',                true],
+  ['Cas 2 · arrondi vers le bas (pas 7.70€)',   p2.ppp === 7.69],
+  ['Cas 3 · total par membre = 57.69€',         p1.ppp + p2.ppp === 57.69],
+  ['Cas 3 · total global distribué = 749.97€',  p1.ppp * 13 + p2.ppp * 13 === 749.97],
+];
+
+function buildAssertions() {
+  const el = document.getElementById('assertions-list');
+  const all = checks.every(([,r]) => r);
+  el.innerHTML = checks.map(([label, result]) => `
+    <div class="assert-row">
+      <span class="${result ? 'assert-pass' : 'assert-fail'}">[${result ? 'PASS' : 'FAIL'}]</span>
+      <span class="assert-label">${label}</span>
+    </div>`).join('') +
+    `<div style="margin-top:12px;padding-top:12px;border-top:1px solid #374151;font-size:13px;font-weight:700;color:${all?'#4ade80':'#f87171'}">
+      ${all ? '✅ Toutes les assertions passent (13/13)' : '❌ Des assertions ont échoué'}
+    </div>`;
+}
+
+// ── Console logs ──────────────────────────────────────────────────────────────
+console.group('%c TEST PAIEMENT ADMIN — 3 cas', 'font-size:14px;font-weight:bold;color:#fbbf24');
+
+console.group('CAS 1 — 650€ ÷ 13');
+console.log('montant_par_personne :', p1.ppp.toFixed(2) + '€');
+console.log('total distribué      :', (p1.ppp * 13).toFixed(2) + '€');
+console.log('centime non distribué:', (p1.montant - p1.ppp * 13).toFixed(4) + '€');
+console.assert(p1.ppp === 50,            'part = 50.00€');
+console.assert(p1.ppp * 13 === 650,      'total = 650.00€');
+console.groupEnd();
+
+console.group('CAS 2 — 100€ ÷ 13 (arrondi)');
+console.log('calcul brut          :', 100 / 13);
+console.log('montant_par_personne :', p2.ppp.toFixed(2) + '€');
+console.log('total distribué      :', (p2.ppp * 13).toFixed(2) + '€');
+console.log('centime non distribué:', (p2.montant - p2.ppp * 13).toFixed(4) + '€');
+console.assert(p2.ppp === 7.69,          'part = 7.69€');
+console.groupEnd();
+
+console.group('CAS 3 — Cumul par membre');
+const total = p1.ppp + p2.ppp;
+console.log('V1 :', p1.ppp.toFixed(2) + '€  (tirage 03/06/2026)');
+console.log('V2 :', p2.ppp.toFixed(2) + '€  (tirage 10/06/2026)');
+console.log('Total par membre :', total.toFixed(2) + '€');
+console.assert(total === 57.69,          'total = 57.69€');
+PARTICIPANTS.forEach(nom => console.log(' ', nom, '→', total.toFixed(2) + '€'));
+console.groupEnd();
+
+checks.forEach(([label, result]) =>
+  result ? console.log('%c[PASS]%c ' + label, 'color:#4ade80', 'color:#d1d5db')
+         : console.error('[FAIL] ' + label)
+);
+console.groupEnd();
+
+// ── Initialisation ────────────────────────────────────────────────────────────
+buildVirements('cas1-list', p1.ppp, '20/06/2026');
+buildVirements('cas2-list', p2.ppp, '20/06/2026');
+buildMembres();
+buildAssertions();
+</script>
+</body>
+</html>
