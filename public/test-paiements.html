@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Test — Flux paiement admin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-gray-950 text-white p-4 font-sans">
+<div class="max-w-lg mx-auto space-y-6">
+
+  <!-- En-tête -->
+  <div class="bg-gradient-to-r from-blue-950 via-blue-900 to-blue-950 rounded-2xl p-5 border border-yellow-500/50">
+    <div class="flex items-center gap-3">
+      <span class="text-3xl">🎲</span>
+      <div>
+        <h1 class="text-lg font-bold text-yellow-400">LES POTES MILLIONNAIRES</h1>
+        <p class="text-blue-300/70 text-xs mt-0.5">Jeu d'essai — Flux paiement administrateur</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- NOTE -->
+  <div class="bg-gray-800 rounded-xl p-3 border border-gray-600 text-xs text-gray-400 leading-relaxed">
+    <span class="font-semibold text-gray-300">Données fictives injectées directement.</span>
+    Aucune requête Supabase. Reproduit le rendu exact de SectionAdmin.tsx et SectionPaiements.tsx.
+    <br /><strong class="text-yellow-400">Ouvrir la console (F12) pour les logs et assertions.</strong>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- CAS 1 — Admin — Enregistrement 650€                                    -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <section>
+    <h2 class="text-sm font-bold text-yellow-300 mb-2 uppercase tracking-wider">
+      Cas 1 — Admin : saisie 650.00€ ÷ 13 membres
+    </h2>
+
+    <!-- Formulaire simulé (lecture seule) -->
+    <div class="rounded-xl bg-green-900/20 border border-green-700 p-4 space-y-3 mb-3">
+      <h3 class="text-base font-bold text-green-300">💸 Enregistrer un paiement</h3>
+      <p class="text-xs text-gray-400">Montant total — les 13 virements individuels sont créés automatiquement.</p>
+      <div class="w-full p-3 rounded-lg bg-gray-900 border-2 border-green-500 text-white text-lg font-mono">650</div>
+      <div class="w-full p-3 rounded-lg bg-gray-900 border border-gray-600 text-gray-400 text-sm">Gains tirage du 03/06/2026</div>
+      <div class="w-full p-3 rounded-lg bg-gradient-to-r from-green-700 to-green-600 text-white font-bold text-center opacity-70">
+        ✅ Enregistrer le paiement
+      </div>
+      <p class="text-sm text-green-400">✅ 650.00€ enregistré — virements créés pour 13 participants</p>
+    </div>
+
+    <!-- Résultat du calcul -->
+    <div class="bg-gray-800 rounded-lg p-3 border border-gray-600 text-xs mb-3">
+      <p class="font-semibold text-white mb-1">Calcul :</p>
+      <p class="text-gray-300 font-mono">parseFloat((650 / 13).toFixed(2)) = <span class="text-green-400 font-bold">50.00€</span>/pers.</p>
+      <p class="text-gray-400 mt-1">Total distribué : 50.00€ × 13 = <span class="text-green-400">650.00€</span> — centime non distribué : <span class="text-green-400">0.00€</span></p>
+    </div>
+
+    <!-- Suivi des virements (SectionAdmin) -->
+    <div class="rounded-xl bg-gray-800 border border-gray-700 p-4">
+      <h3 class="text-base font-bold text-green-300 mb-1">✅ Suivi des virements individuels</h3>
+      <div class="flex justify-between items-center mb-3">
+        <p class="text-xs text-gray-400">Dernier paiement · <strong class="text-white">50.00€/pers.</strong></p>
+        <p class="text-xs text-gray-500">03/06/2026</p>
+      </div>
+      <div class="space-y-1.5 max-h-80 overflow-y-auto" id="cas1-virements"></div>
+      <div class="mt-3 pt-3 border-t border-gray-600">
+        <span class="text-sm text-green-500">13/13 virements effectués</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- CAS 2 — Arrondi 100€ ÷ 13                                              -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <section>
+    <h2 class="text-sm font-bold text-yellow-300 mb-2 uppercase tracking-wider">
+      Cas 2 — Test arrondi : 100.00€ ÷ 13 membres
+    </h2>
+
+    <!-- Résultat du calcul -->
+    <div class="bg-gray-800 rounded-lg p-3 border border-amber-700/50 text-xs mb-3">
+      <p class="font-semibold text-amber-300 mb-1">Comportement de l'arrondi :</p>
+      <p class="text-gray-300 font-mono">100 / 13 = 7.6923076923…</p>
+      <p class="text-gray-300 font-mono">.toFixed(2) → "7.69"  <span class="text-gray-500">(3ème décimale = 2 → arrondi BAS)</span></p>
+      <p class="text-gray-300 font-mono">parseFloat("7.69") = <span class="text-amber-300 font-bold">7.69€</span>/pers.</p>
+      <p class="text-gray-400 mt-2">Total distribué : 7.69€ × 13 = <span class="text-amber-300">99.97€</span></p>
+      <p class="text-amber-400 font-semibold mt-1">⚠️ Centime non distribué : +0.03€ (absorbé, non attribué à personne)</p>
+    </div>
+
+    <!-- Suivi virements -->
+    <div class="rounded-xl bg-gray-800 border border-gray-700 p-4">
+      <h3 class="text-base font-bold text-green-300 mb-1">✅ Suivi des virements individuels</h3>
+      <div class="flex justify-between items-center mb-3">
+        <p class="text-xs text-gray-400">Dernier paiement · <strong class="text-white">7.69€/pers.</strong></p>
+        <p class="text-xs text-gray-500">10/06/2026</p>
+      </div>
+      <div class="space-y-1.5 max-h-72 overflow-y-auto" id="cas2-virements"></div>
+      <div class="mt-3 pt-3 border-t border-gray-600">
+        <span class="text-sm text-green-500">13/13 virements effectués</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- CAS 3 — Page Paiements                                                 -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <section>
+    <h2 class="text-sm font-bold text-yellow-300 mb-2 uppercase tracking-wider">
+      Cas 3 — Page Paiements : cumul des 2 virements du 20/06/2026
+    </h2>
+
+    <!-- Rendu SectionPaiements.tsx -->
+    <div class="space-y-3">
+      <div>
+        <h2 class="text-2xl font-bold text-yellow-400">💳 PAIEMENTS</h2>
+        <p class="text-gray-400 text-sm mt-1">Journal des distributions de l'administrateur.</p>
+      </div>
+      <div class="space-y-2.5" id="cas3-paiements"></div>
+      <div class="bg-green-950/60 rounded-xl p-4 border border-green-700/50 flex justify-between items-center">
+        <div>
+          <p class="font-bold text-green-300">Total distribué</p>
+          <p class="text-xs text-green-500 mt-0.5">2 paiements</p>
+        </div>
+        <span class="text-2xl font-bold text-green-300">750.00€</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- DÉTAIL PAR MEMBRE (vue simulée)                                        -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <section>
+    <h2 class="text-sm font-bold text-yellow-300 mb-2 uppercase tracking-wider">
+      Détail par membre — les 2 virements cumulés
+    </h2>
+    <p class="text-xs text-gray-500 mb-2">Vue simulée (non présente dans la prod) — résumé de ce que chaque membre a reçu.</p>
+    <div class="space-y-1.5" id="detail-membres"></div>
+    <div class="mt-3 bg-blue-950/60 rounded-xl p-4 border border-blue-700/50 flex justify-between items-center">
+      <div>
+        <p class="font-bold text-blue-300">Total par membre</p>
+        <p class="text-xs text-blue-400 mt-0.5">2 virements le 20/06/2026</p>
+      </div>
+      <span class="text-2xl font-bold text-blue-300">57.69€</span>
+    </div>
+  </section>
+
+</div>
+
+<script>
+const PARTICIPANTS = [
+  'ANOUFA Fabienne & Moïse',
+  'BELLALOU Martine & Patrick',
+  'GRINAL Danielle & Serge',
+  'HOCHBERG Nathalie & Bruno',
+  'JURIS Virgine & Frédéric',
+  'KIMAN Laurence & Didier',
+  'LEVIN Gabrielle & Didier',
+  'MESGUICH Corinne & Jean Philippe',
+  'OIKNINE Muriel & Aaron',
+  'PARTOUCHE Sylvie & Serge',
+  'SITBON Leslie & OHAYON Gilles',
+  'TEMAN Eva & FINKELSTEIN Philippe',
+  'WEITZMANN Dalia & Jacques',
+];
+const NB = 13;
+
+// ── Calcul (SectionAdmin.tsx:202) ─────────────────────────────────────────────
+function partParPersonne(total) { return parseFloat((total / NB).toFixed(2)); }
+
+const p1 = { montant: 650, montant_par_personne: partParPersonne(650), note: 'Gains tirage du 03/06/2026', created_at: '2026-06-03T00:00:00Z', dateVirement: '20/06/2026' };
+const p2 = { montant: 100, montant_par_personne: partParPersonne(100), note: 'Gains tirage du 10/06/2026', created_at: '2026-06-10T00:00:00Z', dateVirement: '20/06/2026' };
+
+// ── Rendu suivi virements (SectionAdmin) ──────────────────────────────────────
+function renderVirements(containerId, montant_par_personne, dateVirement) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = PARTICIPANTS.map(nom => `
+    <label class="flex items-center gap-3 p-2.5 rounded-lg bg-green-900/30 border border-green-700">
+      <input type="checkbox" checked disabled class="w-4 h-4 accent-green-500" />
+      <span class="flex-1 text-sm text-green-300">${nom}</span>
+      <span class="text-xs text-green-500">✅ ${dateVirement}</span>
+      <span class="text-xs text-green-400 font-bold">${montant_par_personne.toFixed(2)}€</span>
+    </label>`).join('');
+}
+
+// ── Rendu page Paiements (SectionPaiements.tsx) ───────────────────────────────
+function renderPaiements() {
+  const el = document.getElementById('cas3-paiements');
+  const paiements = [p1, p2]; // plus récent en premier (order by created_at desc → p2 d'abord)
+  const sorted = [p2, p1];
+  el.innerHTML = sorted.map(p => {
+    const d = new Date(p.created_at).toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric' });
+    return `
+      <div class="rounded-xl bg-gray-800 border border-gray-700 p-4 flex justify-between items-center gap-3">
+        <div class="min-w-0">
+          <div class="text-xs text-gray-400">${d}</div>
+          <div class="text-sm text-gray-300 mt-0.5">${p.note}</div>
+          <div class="text-xs mt-1 text-green-500">${NB}/${NB} virements effectués</div>
+        </div>
+        <div class="text-right flex-shrink-0">
+          <div class="text-xl font-bold text-green-400">${p.montant.toFixed(2)}€</div>
+          <div class="text-xs text-gray-400">${p.montant_par_personne.toFixed(2)}€/pers.</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ── Rendu détail par membre (vue simulée) ─────────────────────────────────────
+function renderDetailMembres() {
+  const el = document.getElementById('detail-membres');
+  el.innerHTML = PARTICIPANTS.map((nom, i) => {
+    const total = p1.montant_par_personne + p2.montant_par_personne;
+    return `
+      <div class="rounded-lg bg-gray-800 border border-gray-700 p-3">
+        <div class="flex justify-between items-start">
+          <div>
+            <p class="text-sm font-semibold text-white">${String(i+1).padStart(2,'0')}. ${nom}</p>
+            <div class="flex gap-3 mt-1 text-xs text-gray-400">
+              <span>V1: <strong class="text-green-400">${p1.montant_par_personne.toFixed(2)}€</strong> — tirage du 03/06/2026</span>
+              <span>V2: <strong class="text-green-400">${p2.montant_par_personne.toFixed(2)}€</strong> — tirage du 10/06/2026</span>
+            </div>
+            <p class="text-xs text-gray-500 mt-0.5">Virements effectués le 20/06/2026</p>
+          </div>
+          <div class="text-right flex-shrink-0">
+            <p class="text-base font-bold text-blue-300">${total.toFixed(2)}€</p>
+            <p class="text-xs text-gray-500">total reçu</p>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+renderVirements('cas1-virements', p1.montant_par_personne, p1.dateVirement);
+renderVirements('cas2-virements', p2.montant_par_personne, p2.dateVirement);
+renderPaiements();
+renderDetailMembres();
+
+// ── Console logs ──────────────────────────────────────────────────────────────
+console.group('=== TEST PAIEMENT ADMIN — 3 cas ===');
+
+console.group('CAS 1 — 650€ ÷ 13');
+console.log('montant_par_personne :', p1.montant_par_personne.toFixed(2)+'€');
+console.log('total distribué      :', (p1.montant_par_personne * NB).toFixed(2)+'€');
+console.log('centime non distribué:', (p1.montant - p1.montant_par_personne * NB).toFixed(4)+'€');
+console.assert(p1.montant_par_personne === 50,                     'part = 50.00€');
+console.assert(p1.montant_par_personne * NB === 650,              'total = 650€');
+console.groupEnd();
+
+console.group('CAS 2 — 100€ ÷ 13 (arrondi)');
+console.log('calcul brut          :', 100/NB);
+console.log('montant_par_personne :', p2.montant_par_personne.toFixed(2)+'€');
+console.log('total distribué      :', (p2.montant_par_personne * NB).toFixed(2)+'€');
+console.log('centime non distribué:', (p2.montant - p2.montant_par_personne * NB).toFixed(4)+'€');
+console.assert(p2.montant_par_personne === 7.69,                   'part = 7.69€');
+console.assert(Math.round(p2.montant_par_personne * NB * 100) / 100 === 99.97, 'total = 99.97€');
+console.assert(Math.abs(p2.montant - p2.montant_par_personne * NB - 0.03) < 0.001, 'centime = 0.03€');
+console.groupEnd();
+
+console.group('CAS 3 — Cumul par membre');
+const totalMembre = p1.montant_par_personne + p2.montant_par_personne;
+console.log('V1 :', p1.montant_par_personne.toFixed(2)+'€ (tirage 03/06/2026)');
+console.log('V2 :', p2.montant_par_personne.toFixed(2)+'€ (tirage 10/06/2026)');
+console.log('Total par membre :', totalMembre.toFixed(2)+'€');
+console.assert(totalMembre === 57.69, 'total par membre = 57.69€');
+PARTICIPANTS.forEach(nom => console.log(' ', nom, '→', totalMembre.toFixed(2)+'€'));
+console.groupEnd();
+
+console.groupEnd();
+</script>
+</body>
+</html>
