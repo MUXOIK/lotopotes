@@ -2,8 +2,8 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-export default defineConfig({
-  base: '/lotopotes/',
+export default defineConfig(({ command }) => ({
+  base: command === 'serve' ? '/' : '/lotopotes/',
   publicDir: 'public',
   plugins: [
     react(),
@@ -59,4 +59,4 @@ export default defineConfig({
       },
     },
   },
-})
+}))
