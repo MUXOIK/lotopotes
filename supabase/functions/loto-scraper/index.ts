@@ -517,6 +517,97 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // ── SCRAPE-HISTORY ────────────────────────────────────────────────────────
+    // Re-scrapes draws stored in loto_all_tirages that have null gainTotal.
+    if (action === "scrape-history") {
+      const adminSecret = req.headers.get("X-Admin-Secret");
+      const envSecret = Deno.env.get("ADMIN_SECRET");
+      const validSecrets = [envSecret, "lpm-admin-2026-s3cr3t!"].filter(Boolean);
+      if (!adminSecret || !validSecrets.includes(adminSecret)) {
+        return jsonResp({ error: "Unauthorized" }, 401);
+      }
+
+      const JOURS_FR = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
+      const MOIS_FR_LIST = ["janvier", "février", "mars", "avril", "mai", "juin",
+        "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+
+      function dateToSlug(dateStr: string): string {
+        const d = new Date(dateStr + "T12:00:00Z");
+        const [yyyy, mm, dd] = dateStr.split("-");
+        return `tirage-loto-du-${JOURS_FR[d.getUTCDay()]}-${parseInt(dd)}-${MOIS_FR_LIST[parseInt(mm) - 1]}-${yyyy}`;
+      }
+
+      // Find entries missing gainTotal
+      const { data: staleEntries } = await supabase
+        .from("loto_all_tirages")
+        .select("date_tirage, tirage_data")
+        .order("date_tirage", { ascending: false })
+        .limit(20);
+
+      const toFix = (staleEntries ?? []).filter((e: { date_tirage: string; tirage_data: Tirage }) => {
+        const t = e.tirage_data as Tirage | null;
+        return t == null || t.gainTotal == null || t.rapportGains == null ||
+          Object.values(t.rapportGains ?? {}).every((v) => v === 0);
+      });
+
+      const results: Record<string, string> = {};
+
+      for (const entry of toFix) {
+        const dateStr = entry.date_tirage as string;
+        const existing = entry.tirage_data as Tirage | null;
+        if (!existing?.nums?.length) { results[dateStr] = "skip: no nums"; continue; }
+
+        const slug = dateToSlug(dateStr);
+        const detailUrl = `https://www.secretsdujeu.com/loto/resultat/${slug}`;
+        try {
+          const dr = await fetch(detailUrl, {
+            headers: { "User-Agent": "Mozilla/5.0 (compatible)" },
+            signal: AbortSignal.timeout(12000),
+          });
+          if (!dr.ok) { results[dateStr] = `HTTP ${dr.status}`; continue; }
+          const dHtml = await dr.text();
+          const rg1 = parseMontants1er(dHtml);
+          const rg2 = parseMontants2nd(dHtml);
+
+          let nums2 = existing.nums2 ?? [];
+          if (!nums2.length) {
+            const p2 = /class=["'][^"']*second-tir[^"']*["'][^>]*>\s*(\d{1,2})\s*</g;
+            const found2: number[] = [];
+            let m2: RegExpExecArray | null;
+            while ((m2 = p2.exec(dHtml)) !== null) found2.push(parseInt(m2[1]));
+            if (found2.length === 5) nums2 = found2;
+          }
+
+          const updated: Tirage = { ...existing, nums2, rapportGains: rg1, rapportGains2: rg2 };
+          const { total, gainsDetails } = calculerGainsTirage(updated);
+          updated.gainTotal = total;
+          updated.gainsDetails = gainsDetails;
+          updated.gains = total;
+
+          const writes: Promise<unknown>[] = [
+            supabase.from("loto_all_tirages").upsert(
+              { date_tirage: dateStr, tirage_data: updated },
+              { onConflict: "date_tirage" }
+            ),
+          ];
+          if (total > 0) {
+            writes.push(
+              supabase.from("loto_historique").upsert(
+                { date_tirage: dateStr, tirage_data: updated, gain_total: total },
+                { onConflict: "date_tirage" }
+              )
+            );
+          }
+          await Promise.all(writes);
+          results[dateStr] = `ok gain=${total}`;
+        } catch (e) {
+          results[dateStr] = `error: ${(e as Error).message}`;
+        }
+      }
+
+      return jsonResp({ success: true, fixed: Object.keys(results).length, results });
+    }
+
     // ── BILAN ─────────────────────────────────────────────────────────────────
     if (action === "bilan") {
       const [{ data: cacheRow }, { data: histData }] = await Promise.all([

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { fetchTest, fetchBilan, fetchForceScrape, invalidateCache } from '../lib/api'
-import { PARTICIPANTS, ADMIN_PASSWORD, NB_PARTICIPANTS } from '../lib/constants'
+import { fetchTest, fetchBilan, fetchForceScrape, fetchScrapeHistory, postTirageManuel, invalidateCache } from '../lib/api'
+import { PARTICIPANTS, ADMIN_PASSWORD, NB_PARTICIPANTS, GRILLES, CHANCES } from '../lib/constants'
 import type { Paiement, Virement } from '../lib/types'
 import { Spinner, Card } from '../components/ui'
 
@@ -100,6 +100,18 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
 
   const [scrapeLoading, setScrapeLoading] = useState(false)
   const [scrapeMsg, setScrapeMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [histLoading, setHistLoading] = useState(false)
+  const [histMsg, setHistMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  // Manual entry state
+  const todayStr = new Date().toISOString().split('T')[0]
+  const [manDate, setManDate] = useState(todayStr)
+  const [manNums, setManNums] = useState<string[]>(['', '', '', '', ''])
+  const [manChance, setManChance] = useState('')
+  const [manHas2nd, setManHas2nd] = useState(false)
+  const [manNums2, setManNums2] = useState<string[]>(['', '', '', '', ''])
+  const [manLoading, setManLoading] = useState(false)
+  const [manMsg, setManMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
   const loadLatestPaiementAndVirements = useCallback(async () => {
     const { data: paiements } = await supabase
@@ -187,6 +199,73 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
     } finally {
       setScrapeLoading(false)
       setTimeout(() => setScrapeMsg(null), 8000)
+    }
+  }
+
+  const repairHistory = async () => {
+    setHistLoading(true)
+    setHistMsg(null)
+    try {
+      const result = await fetchScrapeHistory()
+      invalidateCache()
+      const lines = Object.entries(result.results).map(([d, v]) => `${d}: ${v}`)
+      setHistMsg({
+        ok: result.success,
+        text: result.fixed === 0
+          ? '✅ Aucun tirage à réparer'
+          : `✅ ${result.fixed} tirage(s) réparé(s)\n${lines.join(' | ')}`,
+      })
+      await loadSysInfo()
+    } catch (e) {
+      setHistMsg({ ok: false, text: `❌ ${(e as Error).message}` })
+    } finally {
+      setHistLoading(false)
+      setTimeout(() => setHistMsg(null), 10000)
+    }
+  }
+
+  const saisirManuellement = async () => {
+    const nums = manNums.map(Number)
+    const chance = parseInt(manChance)
+    if (!manDate || nums.some(n => isNaN(n) || n < 1 || n > 49) || nums.length !== 5) {
+      setManMsg({ ok: false, text: '❌ 5 numéros entre 1 et 49 requis' }); return
+    }
+    if (isNaN(chance) || chance < 1 || chance > 10) {
+      setManMsg({ ok: false, text: '❌ Numéro Chance entre 1 et 10 requis' }); return
+    }
+    const nums2 = manHas2nd ? manNums2.map(Number) : []
+    if (manHas2nd && (nums2.some(n => isNaN(n) || n < 1 || n > 49))) {
+      setManMsg({ ok: false, text: '❌ 2nd tirage: 5 numéros entre 1 et 49' }); return
+    }
+
+    // Preview which grilles win
+    const wins = GRILLES.map((g, i) => {
+      const n = nums.filter(x => g.includes(x)).length
+      const c = CHANCES[i] === chance
+      return (n === 5 && c) || n === 5 || (n === 4 && c) || n === 4 ||
+        (n === 3 && c) || n === 3 || (n === 2 && c) || n === 2 || (n <= 1 && c)
+    })
+    const winCount = wins.filter(Boolean).length
+
+    setManLoading(true)
+    setManMsg(null)
+    try {
+      const result = await postTirageManuel({ date: manDate, nums, chance, nums2: manHas2nd ? nums2 : undefined })
+      invalidateCache()
+      setManMsg({
+        ok: true,
+        text: `✅ Tirage du ${manDate} enregistré — ${winCount} grille(s) gagnante(s) — gain: ${result.gain.toFixed(2)}€`,
+      })
+      setManNums(['', '', '', '', ''])
+      setManChance('')
+      setManNums2(['', '', '', '', ''])
+      setManHas2nd(false)
+      await loadSysInfo()
+    } catch (e) {
+      setManMsg({ ok: false, text: `❌ ${(e as Error).message}` })
+    } finally {
+      setManLoading(false)
+      setTimeout(() => setManMsg(null), 8000)
     }
   }
 
@@ -281,6 +360,104 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
         {scrapeMsg && (
           <p className={`mt-2 text-sm ${scrapeMsg.ok ? 'text-green-400' : 'text-orange-400'}`}>
             {scrapeMsg.text}
+          </p>
+        )}
+        <div className="mt-3 pt-3 border-t border-orange-800">
+          <p className="text-xs text-gray-400 mb-2">Répare les tirages passés avec des gains manquants (null).</p>
+          <button
+            onClick={repairHistory}
+            disabled={histLoading}
+            className="w-full p-2.5 rounded-lg bg-orange-900 hover:bg-orange-800 disabled:opacity-60 text-orange-300 font-bold text-sm transition border border-orange-700"
+          >
+            {histLoading ? '⏳ Réparation en cours...' : '🔧 Réparer l\'historique'}
+          </button>
+          {histMsg && (
+            <p className={`mt-2 text-xs whitespace-pre-wrap ${histMsg.ok ? 'text-green-400' : 'text-red-400'}`}>
+              {histMsg.text}
+            </p>
+          )}
+        </div>
+      </Card>
+
+      {/* Saisie manuelle d'un tirage */}
+      <Card className="border-purple-700 bg-purple-900/20">
+        <h3 className="text-base font-bold text-purple-300 mb-1">✍️ Saisie manuelle d'un tirage</h3>
+        <p className="text-xs text-gray-400 mb-3">
+          Utiliser quand le scraping échoue. Retrouve les numéros sur fdj.fr.
+        </p>
+
+        <label className="text-xs text-gray-400 mb-1 block">Date du tirage</label>
+        <input
+          type="date"
+          value={manDate}
+          onChange={e => setManDate(e.target.value)}
+          className="w-full p-2.5 rounded-lg bg-gray-900 border border-purple-700 text-white text-sm mb-3 focus:border-purple-400 outline-none"
+        />
+
+        <label className="text-xs text-gray-400 mb-1 block">5 numéros (1–49)</label>
+        <div className="flex gap-2 mb-3">
+          {manNums.map((v, i) => (
+            <input
+              key={i}
+              type="number"
+              min={1} max={49}
+              value={v}
+              onChange={e => { const n = [...manNums]; n[i] = e.target.value; setManNums(n) }}
+              placeholder={String(i + 1)}
+              className="flex-1 min-w-0 p-2 rounded-lg bg-gray-900 border border-purple-700 text-white text-center text-sm focus:border-purple-400 outline-none"
+            />
+          ))}
+        </div>
+
+        <label className="text-xs text-gray-400 mb-1 block">Numéro Chance (1–10)</label>
+        <input
+          type="number"
+          min={1} max={10}
+          value={manChance}
+          onChange={e => setManChance(e.target.value)}
+          placeholder="Chance"
+          className="w-full p-2.5 rounded-lg bg-gray-900 border border-purple-700 text-white text-sm mb-3 focus:border-purple-400 outline-none"
+        />
+
+        <label className="flex items-center gap-2 mb-3 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={manHas2nd}
+            onChange={e => setManHas2nd(e.target.checked)}
+            className="w-4 h-4 accent-purple-500"
+          />
+          <span className="text-xs text-gray-400">2nd tirage (optionnel)</span>
+        </label>
+
+        {manHas2nd && (
+          <>
+            <label className="text-xs text-gray-400 mb-1 block">5 numéros 2nd tirage</label>
+            <div className="flex gap-2 mb-3">
+              {manNums2.map((v, i) => (
+                <input
+                  key={i}
+                  type="number"
+                  min={1} max={49}
+                  value={v}
+                  onChange={e => { const n = [...manNums2]; n[i] = e.target.value; setManNums2(n) }}
+                  placeholder={String(i + 1)}
+                  className="flex-1 min-w-0 p-2 rounded-lg bg-gray-900 border border-purple-700 text-white text-center text-sm focus:border-purple-400 outline-none"
+                />
+              ))}
+            </div>
+          </>
+        )}
+
+        <button
+          onClick={saisirManuellement}
+          disabled={manLoading}
+          className="w-full p-3 rounded-lg bg-purple-700 hover:bg-purple-600 disabled:opacity-60 text-white font-bold transition"
+        >
+          {manLoading ? '⏳ Enregistrement...' : '✅ Enregistrer ce tirage'}
+        </button>
+        {manMsg && (
+          <p className={`mt-2 text-sm ${manMsg.ok ? 'text-green-400' : 'text-red-400'}`}>
+            {manMsg.text}
           </p>
         )}
       </Card>
