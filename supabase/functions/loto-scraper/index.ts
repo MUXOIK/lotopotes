@@ -548,6 +548,33 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // ── DEBUG ─────────────────────────────────────────────────────────────────
+    if (action === "debug") {
+      try {
+        const resp = await fetch(
+          "https://www.secretsdujeu.com/page/jeux_loto_resultats.html",
+          { headers: { "User-Agent": "Mozilla/5.0 (compatible)" }, signal: AbortSignal.timeout(12000) }
+        );
+        const html = resp.ok ? await resp.text() : "";
+        const urlRegex = /(?:href|"url")[=:]["'](?:https:\/\/www\.secretsdujeu\.com)?(\/loto\/resultat\/(tirage-loto-du-[^"'\s>?#]+))/gi;
+        const slugs: string[] = [];
+        let um: RegExpExecArray | null;
+        while ((um = urlRegex.exec(html)) !== null) slugs.push(um[2]);
+        const numRegex = /combinaison gagnante[\s\S]{0,200}?(\d+)[,\-\s]+(\d+)[,\-\s]+(\d+)[,\-\s]+(\d+)[,\-\s]+(\d+)[\s\S]{0,100}?num.ro Chance est le (\d+)/i;
+        const nm = numRegex.exec(html);
+        return jsonResp({
+          ok: resp.ok,
+          status: resp.status,
+          htmlLength: html.length,
+          slugsFound: slugs.slice(0, 5),
+          numbersOnMainPage: nm ? [1,2,3,4,5,6].map(i => parseInt(nm[i])) : null,
+          htmlSnippet: html.slice(0, 500),
+        });
+      } catch (e) {
+        return jsonResp({ error: (e as Error).message }, 500);
+      }
+    }
+
     return jsonResp({ error: `Unknown action: ${action}` }, 400);
   } catch (err) {
     return jsonResp({ error: (err as Error).message }, 500);
