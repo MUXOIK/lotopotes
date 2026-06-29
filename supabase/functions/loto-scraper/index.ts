@@ -139,20 +139,35 @@ function parseMontantCellule(texte: string): number | null {
 function parseMontants1er(html: string): RapportGains {
   const lignes = extraireLignesTableau(html);
   const rg: RapportGains = { "5+1": 0, "5": 0, "4+1": 0, "4": 0, "3+1": 0, "3": 0, "2+1": 0, "2": 0, "1+1": 0 };
+  // The table has two sections separated by a header row containing "Bons numéros" + "Gagnants".
+  // Stop parsing when we reach the 2nd section header (2nd tirage).
+  let sectionCount = 0;
   for (let i = 0; i < lignes.length; i++) {
     const rowText = lignes[i].join(" ");
-    if (/2nd.*tirage|second.*tirage/i.test(rowText)) break;
+    if (/bons.num/i.test(rowText) && /gagnants/i.test(rowText)) {
+      sectionCount++;
+      if (sectionCount > 1) break;
+      continue;
+    }
+    if (sectionCount === 0 || /2nd.*tirage|second.*tirage/i.test(rowText)) { if (sectionCount === 0) continue; else break; }
     const cells = lignes[i];
-    let bonsMatch = /^(\d)\s*(?:bons?|bon)\b/i.exec(cells[0] || "");
-    if (!bonsMatch && /(?:0.*ou.*1|1.*ou.*0).*bon/i.test(cells[0] || "")) {
-      bonsMatch = ["", "1"];
+    // Description cell can be any column (cells[0] is often empty)
+    let bonsMatch: RegExpExecArray | null = null;
+    let avecChance = false;
+    for (const c of cells) {
+      const m = /^(\d)\s*(?:bons?|bon)\b/i.exec(c.trim());
+      if (m) { bonsMatch = m; avecChance = /chance/i.test(c); break; }
+      if (/(?:0.*ou.*1|1.*ou.*0).*bon/i.test(c)) {
+        bonsMatch = ["", "1"] as unknown as RegExpExecArray;
+        avecChance = /chance/i.test(c);
+        break;
+      }
     }
     if (!bonsMatch) continue;
     const bons = parseInt(bonsMatch[1]);
-    const avecChance = /chance/i.test(rowText);
     let montant: number | null = null;
-    for (let j = 0; j < cells.length; j++) {
-      if (/€|\/|pas de gagnant/i.test(cells[j])) { montant = parseMontantCellule(cells[j]); break; }
+    for (const c of cells) {
+      if (/€|\/|pas de gagnant/i.test(c)) { montant = parseMontantCellule(c); break; }
     }
     const cle = avecChance ? (bons > 0 ? bons + "+1" : "1+1") : String(bons);
     if (cle in rg && montant !== null && montant > 0) rg[cle] = montant;
@@ -164,19 +179,24 @@ function parseMontants1er(html: string): RapportGains {
 function parseMontants2nd(html: string): RapportGains {
   const lignes = extraireLignesTableau(html);
   const rg: RapportGains = { "5": 0, "4": 0, "3": 0, "2": 0 };
-  let foundSecond = false;
+  // 2nd tirage section starts at the 2nd occurrence of the "Bons numéros / Gagnants" header row.
+  let sectionCount = 0;
   for (let i = 0; i < lignes.length; i++) {
     const rowText = lignes[i].join(" ");
-    if (/2nd.*tirage|second.*tirage/i.test(rowText)) { foundSecond = true; continue; }
-    if (!foundSecond) continue;
+    if (/bons.num/i.test(rowText) && /gagnants/i.test(rowText)) { sectionCount++; continue; }
+    if (sectionCount < 2) continue;
     const cells = lignes[i];
-    const bonsMatch = /^(\d)\s*(?:bons?|bon)\b/i.exec(cells[0] || "");
+    let bonsMatch: RegExpExecArray | null = null;
+    for (const c of cells) {
+      const m = /^(\d)\s*(?:bons?|bon)\b/i.exec(c.trim());
+      if (m) { bonsMatch = m; break; }
+    }
     if (!bonsMatch) continue;
     const bons = parseInt(bonsMatch[1]);
     if (![2, 3, 4, 5].includes(bons)) continue;
     let montant: number | null = null;
-    for (let j = 0; j < cells.length; j++) {
-      if (/€|\/|pas de gagnant/i.test(cells[j])) { montant = parseMontantCellule(cells[j]); break; }
+    for (const c of cells) {
+      if (/€|\/|pas de gagnant/i.test(c)) { montant = parseMontantCellule(c); break; }
     }
     const cle = String(bons);
     if (cle in rg && rg[cle] === 0 && montant !== null) rg[cle] = montant;
