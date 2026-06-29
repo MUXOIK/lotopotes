@@ -184,21 +184,47 @@ function parseMontants2nd(html: string): RapportGains {
   return rg;
 }
 
+// Returns the next draw date in Europe/Paris time (loto draws: Mon/Wed/Sat at ~21:20 local)
+// We set expiry to 21:30 Paris time on the next draw day to ensure stale cache is
+// refreshed after the draw results are published (usually available ~21:20 local).
 function prochainTirage(): Date {
-  const now = new Date();
+  // Draw days: 1=Monday, 3=Wednesday, 6=Saturday
   const jours = [1, 3, 6];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(now);
-    d.setDate(now.getDate() + i);
-    if (jours.includes(d.getDay())) {
-      d.setHours(20, 50, 0, 0);
-      if (d > now) return d;
-    }
+  // Work in Paris time by formatting and re-parsing
+  const now = new Date();
+  const parisFmt = new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Europe/Paris",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false,
+  }).formatToParts(now);
+  const get = (t: string) => parseInt(parisFmt.find((p) => p.type === t)!.value);
+  const parisDay = get("weekday") === undefined
+    ? new Date(now.toLocaleString("en-US", { timeZone: "Europe/Paris" })).getDay()
+    : new Date(now.toLocaleString("en-US", { timeZone: "Europe/Paris" })).getDay();
+  const parisHour = get("hour");
+  const parisMinute = get("minute");
+
+  // Has today's draw already happened? Draws publish results around 21:20 Paris.
+  const drawDoneToday = parisHour > 21 || (parisHour === 21 && parisMinute >= 30);
+
+  for (let i = 0; i < 8; i++) {
+    const candidate = new Date(now);
+    candidate.setDate(now.getDate() + i);
+    const candidateDay = new Date(candidate.toLocaleString("en-US", { timeZone: "Europe/Paris" })).getDay();
+    if (!jours.includes(candidateDay)) continue;
+    if (i === 0 && !drawDoneToday) continue; // today's draw not done yet — not a valid next expiry
+    // Set expiry to 21:30 Paris time on this draw day
+    // Convert 21:30 Paris → UTC: subtract Paris offset
+    const expiryParis = new Date(candidate.toLocaleString("en-US", { timeZone: "Europe/Paris" }));
+    expiryParis.setHours(21, 30, 0, 0);
+    // Get the UTC equivalent by computing offset
+    const offsetMs = candidate.getTime() - new Date(candidate.toLocaleString("en-US", { timeZone: "Europe/Paris" })).getTime();
+    const expiryUTC = new Date(expiryParis.getTime() + offsetMs);
+    if (expiryUTC > now) return expiryUTC;
   }
-  const d = new Date(now);
-  d.setDate(now.getDate() + 7);
-  d.setHours(20, 50, 0, 0);
-  return d;
+  // Fallback: 7 days from now
+  return new Date(now.getTime() + 7 * 24 * 3600 * 1000);
 }
 
 async function doScrape(supabase: ReturnType<typeof createClient>, prevDate: string | null, prevNombreTirages: number): Promise<{
@@ -218,27 +244,51 @@ async function doScrape(supabase: ReturnType<typeof createClient>, prevDate: str
     return { success: false, tirage: null, error: (e as Error).message };
   }
 
+  // Collect all draw detail URLs from the page — format: tirage-loto-du-DD-MM-YYYY
+  const allUrlMatches: { url: string; date: Date }[] = [];
+  const urlRegex = /"url":"(https:\/\/www\.secretsdujeu\.com\/loto\/resultat\/tirage-loto-du-(\d{2})-(\d{2})-(\d{4})[^"]*)"/g;
+  let urlMatch: RegExpExecArray | null;
+  while ((urlMatch = urlRegex.exec(html)) !== null) {
+    const [, url, dd, mm, yyyy] = urlMatch;
+    const d = new Date(`${yyyy}-${mm}-${dd}T20:50:00.000Z`);
+    if (!isNaN(d.getTime())) allUrlMatches.push({ url, date: d });
+  }
+  // Pick the most recent draw URL
+  allUrlMatches.sort((a, b) => b.date.getTime() - a.date.getTime());
+  const bestUrl = allUrlMatches[0];
+
+  // Derive date from the URL slug (most reliable source)
   let date: string;
-  const dm = /"dateModified":"(\d{4}-\d{2}-\d{2})/.exec(html);
-  if (dm) {
-    date = dm[1] + "T20:50:00.000Z";
+  if (bestUrl) {
+    date = bestUrl.date.toISOString();
   } else {
-    const now = new Date();
-    const day = now.getDay();
-    const jours = [1, 3, 6];
-    let db = 0;
-    for (let i = 0; i <= 7; i++) {
-      if (jours.includes(((day - i) + 7) % 7)) { db = i; break; }
-    }
-    const last = new Date(now);
-    last.setDate(now.getDate() - db);
-    if (db === 0 && now.getHours() < 21) {
-      for (let i = 1; i <= 7; i++) {
-        if (jours.includes(((day - i) + 7) % 7)) { last.setDate(now.getDate() - i); break; }
+    // Fallback: dateModified JSON-LD field
+    const dm = /"dateModified":"(\d{4}-\d{2}-\d{2})/.exec(html);
+    if (dm) {
+      date = dm[1] + "T20:50:00.000Z";
+    } else {
+      // Last resort: compute last draw day in Paris time
+      const now = new Date();
+      const parisNow = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Paris" }));
+      const day = parisNow.getDay();
+      const hour = parisNow.getHours();
+      const jours = [1, 3, 6];
+      let db = 0;
+      for (let i = 0; i <= 7; i++) {
+        const candidate = ((day - i) + 7) % 7;
+        if (jours.includes(candidate)) {
+          // If i===0, draw must have already happened (after 21:30 Paris)
+          if (i === 0 && hour < 21) continue;
+          db = i;
+          break;
+        }
       }
+      const last = new Date(parisNow);
+      last.setDate(parisNow.getDate() - db);
+      last.setHours(20, 50, 0, 0);
+      const offsetMs = now.getTime() - parisNow.getTime();
+      date = new Date(last.getTime() + offsetMs).toISOString();
     }
-    last.setHours(20, 50, 0, 0);
-    date = last.toISOString();
   }
 
   const m = /combinaison gagnante[^0-9]*(\d+)-(\d+)-(\d+)-(\d+)-(\d+)[^0-9]*num.ro Chance est le (\d+)/.exec(html);
@@ -250,16 +300,14 @@ async function doScrape(supabase: ReturnType<typeof createClient>, prevDate: str
   let rg2: RapportGains = {};
   let nums2: number[] = [];
 
-  const urlM = /"url":"(https:\/\/www\.secretsdujeu\.com\/loto\/resultat\/tirage-loto-du-[^"]+)"/.exec(html);
-  if (urlM) {
+  if (bestUrl) {
     try {
-      const detailResp = await fetch(urlM[1], {
+      const detailResp = await fetch(bestUrl.url, {
         headers: { "User-Agent": "Mozilla/5.0 (compatible)" },
         signal: AbortSignal.timeout(12000),
       });
       if (detailResp.ok) {
         const detailHtml = await detailResp.text();
-        // Use only real FDJ values — no defaults
         rg1 = parseMontants1er(detailHtml);
         rg2 = parseMontants2nd(detailHtml);
         const p2 = /class=["']loto-numero second-tir["'][^>]*>\s*(\d{1,2})\s*<\/p>/g;
@@ -336,6 +384,7 @@ Deno.serve(async (req: Request) => {
 
       let tirage: Tirage | null = null;
       let success = true;
+      let scrapeStale = false;
 
       if (cacheValid) {
         tirage = cr!.tirage_data!;
@@ -350,6 +399,7 @@ Deno.serve(async (req: Request) => {
           const { total, gainsDetails } = calculerGainsTirage(tirage);
           tirage = { ...tirage, gainTotal: total, gainsDetails };
           success = false;
+          scrapeStale = true;
         }
       }
 
@@ -372,7 +422,7 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      return jsonResp({ success, tirage, historique: allTirages, distribution, cagnotte });
+      return jsonResp({ success, scrapeStale, tirage, historique: allTirages, distribution, cagnotte });
     }
 
     // ── FORCE-SCRAPE ──────────────────────────────────────────────────────────

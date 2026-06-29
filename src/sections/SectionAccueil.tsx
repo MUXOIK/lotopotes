@@ -15,7 +15,11 @@ export function SectionAccueil() {
     try {
       const result = await fetchLotoComplet()
       setData(result)
-      setError(null)
+      if (!result.success && !result.tirage) {
+        setError('Impossible de contacter le serveur. Veuillez réessayer.')
+      } else {
+        setError(null)
+      }
     } catch {
       setError('Impossible de contacter le serveur. Veuillez réessayer.')
     } finally {
@@ -58,6 +62,11 @@ export function SectionAccueil() {
 
       <Card>
         <h2 className="text-xl font-bold text-yellow-400 mb-3">🎰 DERNIERS TIRAGES FDJ</h2>
+        {data?.scrapeStale && (
+          <div className="mb-3 bg-orange-900/60 border border-orange-500 rounded-lg px-3 py-2 text-xs text-orange-200">
+            ⚠️ Données temporairement indisponibles — résultats du dernier tirage en attente de mise à jour.
+          </div>
+        )}
         {loading ? (
           <LoadingWithHint />
         ) : error ? (

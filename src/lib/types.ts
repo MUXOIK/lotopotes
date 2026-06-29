@@ -42,6 +42,7 @@ export interface ParticipantDistribution {
 
 export interface ApiLotoComplet {
   success: boolean
+  scrapeStale?: boolean
   tirage: Tirage | null
   historique: Tirage[]
   distribution: Record<string, ParticipantDistribution>
