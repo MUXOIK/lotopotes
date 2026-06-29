@@ -244,14 +244,34 @@ async function doScrape(supabase: ReturnType<typeof createClient>, prevDate: str
     return { success: false, tirage: null, error: (e as Error).message };
   }
 
-  // Collect all draw detail URLs from the page — format: tirage-loto-du-DD-MM-YYYY
+  const MOIS_FR: Record<string, string> = {
+    janvier: "01", février: "02", mars: "03", avril: "04", mai: "05", juin: "06",
+    juillet: "07", août: "08", septembre: "09", octobre: "10", novembre: "11", décembre: "12",
+  };
+
+  function slugToDate(slug: string): Date | null {
+    // slug format: tirage-loto-du-DAYNAME-DD-MONTHNAME-YYYY
+    const m = /tirage-loto-du-\w+-(\d{1,2})-(\w+)-(\d{4})$/.exec(slug);
+    if (!m) return null;
+    const [, dd, moisRaw, yyyy] = m;
+    const mois = MOIS_FR[moisRaw.toLowerCase()];
+    if (!mois) return null;
+    const d = new Date(`${yyyy}-${mois}-${dd.padStart(2, "0")}T20:50:00.000Z`);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  // Collect all draw detail URLs from the page — new slug format: tirage-loto-du-DAYNAME-DD-MONTHNAME-YYYY
   const allUrlMatches: { url: string; date: Date }[] = [];
-  const urlRegex = /"url":"(https:\/\/www\.secretsdujeu\.com\/loto\/resultat\/tirage-loto-du-(\d{2})-(\d{2})-(\d{4})[^"]*)"/g;
+  // Match both absolute and relative href/src containing the slug
+  const urlRegex = /(?:href|"url")[=:]["'](?:https:\/\/www\.secretsdujeu\.com)?(\/loto\/resultat\/(tirage-loto-du-[^"'\s>?#]+))/gi;
   let urlMatch: RegExpExecArray | null;
   while ((urlMatch = urlRegex.exec(html)) !== null) {
-    const [, url, dd, mm, yyyy] = urlMatch;
-    const d = new Date(`${yyyy}-${mm}-${dd}T20:50:00.000Z`);
-    if (!isNaN(d.getTime())) allUrlMatches.push({ url, date: d });
+    const [, path, slug] = urlMatch;
+    const d = slugToDate(slug);
+    if (d) {
+      const fullUrl = `https://www.secretsdujeu.com${path}`;
+      allUrlMatches.push({ url: fullUrl, date: d });
+    }
   }
   // Pick the most recent draw URL
   allUrlMatches.sort((a, b) => b.date.getTime() - a.date.getTime());
@@ -277,7 +297,6 @@ async function doScrape(supabase: ReturnType<typeof createClient>, prevDate: str
       for (let i = 0; i <= 7; i++) {
         const candidate = ((day - i) + 7) % 7;
         if (jours.includes(candidate)) {
-          // If i===0, draw must have already happened (after 21:30 Paris)
           if (i === 0 && hour < 21) continue;
           db = i;
           break;
@@ -291,11 +310,14 @@ async function doScrape(supabase: ReturnType<typeof createClient>, prevDate: str
     }
   }
 
-  const m = /combinaison gagnante[^0-9]*(\d+)-(\d+)-(\d+)-(\d+)-(\d+)[^0-9]*num.ro Chance est le (\d+)/.exec(html);
-  if (!m) return { success: false, tirage: null, error: "Numéros non trouvés" };
+  // Numbers appear on detail page (comma or hyphen separated); also try main page as fallback
+  // Pattern: "combinaison gagnante ... N, N, N, N, N ... numéro Chance est le N"
+  // OR: "combinaison gagnante ... N-N-N-N-N ... numéro Chance est le N"
+  const numRegex = /combinaison gagnante[\s\S]{0,200}?(\d+)[,\-\s]+(\d+)[,\-\s]+(\d+)[,\-\s]+(\d+)[,\-\s]+(\d+)[\s\S]{0,100}?num.ro Chance est le (\d+)/i;
+  const m = numRegex.exec(html);
 
-  const nums = [1, 2, 3, 4, 5].map((i) => parseInt(m[i]));
-  const chance = parseInt(m[6]);
+  let nums: number[];
+  let chance: number;
   let rg1: RapportGains = { "5+1": 0, "5": 0, "4+1": 0, "4": 0, "3+1": 0, "3": 0, "2+1": 0, "2": 0, "1+1": 0 };
   let rg2: RapportGains = {};
   let nums2: number[] = [];
@@ -310,12 +332,37 @@ async function doScrape(supabase: ReturnType<typeof createClient>, prevDate: str
         const detailHtml = await detailResp.text();
         rg1 = parseMontants1er(detailHtml);
         rg2 = parseMontants2nd(detailHtml);
-        const p2 = /class=["']loto-numero second-tir["'][^>]*>\s*(\d{1,2})\s*<\/p>/g;
-        let mm: RegExpExecArray | null;
-        while ((mm = p2.exec(detailHtml)) !== null) nums2.push(parseInt(mm[1]));
+
+        // Extract 2nd tirage numbers — try multiple selector patterns
+        const p2Patterns = [
+          /class=["'][^"']*second-tir[^"']*["'][^>]*>\s*(\d{1,2})\s*</g,
+          /class=["'][^"']*loto-numero[^"']*["'][^>]*>\s*(\d{1,2})\s*<\/[a-z]+>\s*(?:<[^>]+>\s*)*(?:2nd|second)/gi,
+        ];
+        for (const pat of p2Patterns) {
+          const found: number[] = [];
+          let mm: RegExpExecArray | null;
+          while ((mm = pat.exec(detailHtml)) !== null) found.push(parseInt(mm[1]));
+          if (found.length === 5) { nums2 = found; break; }
+        }
+
+        // Parse numbers from detail page if not found on main page
+        if (!m) {
+          const dm = numRegex.exec(detailHtml);
+          if (dm) {
+            nums = [1, 2, 3, 4, 5].map((i) => parseInt(dm[i]));
+            chance = parseInt(dm[6]);
+          }
+        }
       }
     } catch (_e) { /* rg1/rg2 stay at zero — no invented defaults */ }
   }
+
+  if (m && !nums!) {
+    nums = [1, 2, 3, 4, 5].map((i) => parseInt(m[i]));
+    chance = parseInt(m[6]);
+  }
+
+  if (!nums! || !chance!) return { success: false, tirage: null, error: "Numéros non trouvés" };
 
   const tirage: Tirage = { nums, chance, nums2, date, rapportGains: rg1, rapportGains2: rg2 };
   const { total, gainsDetails } = calculerGainsTirage(tirage);
