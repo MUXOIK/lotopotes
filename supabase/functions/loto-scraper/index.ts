@@ -310,17 +310,21 @@ async function doScrape(supabase: ReturnType<typeof createClient>, prevDate: str
     }
   }
 
-  // Numbers appear on detail page (comma or hyphen separated); also try main page as fallback
-  // Pattern: "combinaison gagnante ... N, N, N, N, N ... numéro Chance est le N"
-  // OR: "combinaison gagnante ... N-N-N-N-N ... numéro Chance est le N"
+  // Numbers: comma or hyphen separated, found on main page or detail page
   const numRegex = /combinaison gagnante[\s\S]{0,200}?(\d+)[,\-\s]+(\d+)[,\-\s]+(\d+)[,\-\s]+(\d+)[,\-\s]+(\d+)[\s\S]{0,100}?num.ro Chance est le (\d+)/i;
-  const m = numRegex.exec(html);
 
-  let nums: number[];
-  let chance: number;
+  let nums: number[] = [];
+  let chance = 0;
   let rg1: RapportGains = { "5+1": 0, "5": 0, "4+1": 0, "4": 0, "3+1": 0, "3": 0, "2+1": 0, "2": 0, "1+1": 0 };
   let rg2: RapportGains = {};
   let nums2: number[] = [];
+
+  // Try main page first
+  const mainMatch = numRegex.exec(html);
+  if (mainMatch) {
+    nums = [1, 2, 3, 4, 5].map((i) => parseInt(mainMatch[i]));
+    chance = parseInt(mainMatch[6]);
+  }
 
   if (bestUrl) {
     try {
@@ -333,20 +337,15 @@ async function doScrape(supabase: ReturnType<typeof createClient>, prevDate: str
         rg1 = parseMontants1er(detailHtml);
         rg2 = parseMontants2nd(detailHtml);
 
-        // Extract 2nd tirage numbers — try multiple selector patterns
-        const p2Patterns = [
-          /class=["'][^"']*second-tir[^"']*["'][^>]*>\s*(\d{1,2})\s*</g,
-          /class=["'][^"']*loto-numero[^"']*["'][^>]*>\s*(\d{1,2})\s*<\/[a-z]+>\s*(?:<[^>]+>\s*)*(?:2nd|second)/gi,
-        ];
-        for (const pat of p2Patterns) {
-          const found: number[] = [];
-          let mm: RegExpExecArray | null;
-          while ((mm = pat.exec(detailHtml)) !== null) found.push(parseInt(mm[1]));
-          if (found.length === 5) { nums2 = found; break; }
-        }
+        // Extract 2nd tirage numbers
+        const p2 = /class=["'][^"']*second-tir[^"']*["'][^>]*>\s*(\d{1,2})\s*</g;
+        const found2: number[] = [];
+        let mm: RegExpExecArray | null;
+        while ((mm = p2.exec(detailHtml)) !== null) found2.push(parseInt(mm[1]));
+        if (found2.length === 5) nums2 = found2;
 
-        // Parse numbers from detail page if not found on main page
-        if (!m) {
+        // Fall back to detail page numbers if main page had none
+        if (nums.length === 0) {
           const dm = numRegex.exec(detailHtml);
           if (dm) {
             nums = [1, 2, 3, 4, 5].map((i) => parseInt(dm[i]));
@@ -357,12 +356,7 @@ async function doScrape(supabase: ReturnType<typeof createClient>, prevDate: str
     } catch (_e) { /* rg1/rg2 stay at zero — no invented defaults */ }
   }
 
-  if (m && !nums!) {
-    nums = [1, 2, 3, 4, 5].map((i) => parseInt(m[i]));
-    chance = parseInt(m[6]);
-  }
-
-  if (!nums! || !chance!) return { success: false, tirage: null, error: "Numéros non trouvés" };
+  if (nums.length === 0 || chance === 0) return { success: false, tirage: null, error: "Numéros non trouvés" };
 
   const tirage: Tirage = { nums, chance, nums2, date, rapportGains: rg1, rapportGains2: rg2 };
   const { total, gainsDetails } = calculerGainsTirage(tirage);
