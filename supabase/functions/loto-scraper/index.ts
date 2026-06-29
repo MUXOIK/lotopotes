@@ -198,12 +198,12 @@ function prochainTirage(): Date {
     hour: "2-digit", minute: "2-digit", second: "2-digit",
     hour12: false,
   }).formatToParts(now);
-  const get = (t: string) => parseInt(parisFmt.find((p) => p.type === t)!.value);
-  const parisDay = get("weekday") === undefined
-    ? new Date(now.toLocaleString("en-US", { timeZone: "Europe/Paris" })).getDay()
-    : new Date(now.toLocaleString("en-US", { timeZone: "Europe/Paris" })).getDay();
-  const parisHour = get("hour");
-  const parisMinute = get("minute");
+  const getPart = (t: string) => {
+    const p = parisFmt.find((part) => part.type === t);
+    return p ? parseInt(p.value) : 0;
+  };
+  const parisHour = getPart("hour");
+  const parisMinute = getPart("minute");
 
   // Has today's draw already happened? Draws publish results around 21:20 Paris.
   const drawDoneToday = parisHour > 21 || (parisHour === 21 && parisMinute >= 30);
