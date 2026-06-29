@@ -562,13 +562,43 @@ Deno.serve(async (req: Request) => {
         while ((um = urlRegex.exec(html)) !== null) slugs.push(um[2]);
         const numRegex = /combinaison gagnante[\s\S]{0,200}?(\d+)[,\-\s]+(\d+)[,\-\s]+(\d+)[,\-\s]+(\d+)[,\-\s]+(\d+)[\s\S]{0,100}?num.ro Chance est le (\d+)/i;
         const nm = numRegex.exec(html);
+        const nums = nm ? [1,2,3,4,5].map(i => parseInt(nm[i])) : null;
+        const chance = nm ? parseInt(nm[6]) : null;
+
+        // Fetch detail page of most recent slug
+        let detailInfo: Record<string, unknown> = {};
+        if (slugs.length > 0) {
+          const detailUrl = `https://www.secretsdujeu.com/loto/resultat/${slugs[0]}`;
+          try {
+            const dr = await fetch(detailUrl, { headers: { "User-Agent": "Mozilla/5.0 (compatible)" }, signal: AbortSignal.timeout(12000) });
+            if (dr.ok) {
+              const dHtml = await dr.text();
+              const rg1 = parseMontants1er(dHtml);
+              const rg2 = parseMontants2nd(dHtml);
+              // Compute gains if we have nums
+              let gainsCalc = null;
+              if (nums && chance !== null) {
+                const fakeT: Tirage = { nums, chance, nums2: [], date: "", rapportGains: rg1, rapportGains2: rg2 };
+                gainsCalc = calculerGainsTirage(fakeT);
+              }
+              // Show table rows for diagnosis
+              const lignes = extraireLignesTableau(dHtml);
+              detailInfo = { detailStatus: dr.status, rg1, rg2, gainsCalc, tableRows: lignes.slice(0, 20) };
+            } else {
+              detailInfo = { detailStatus: dr.status };
+            }
+          } catch (e2) {
+            detailInfo = { detailError: (e2 as Error).message };
+          }
+        }
+
         return jsonResp({
           ok: resp.ok,
           status: resp.status,
           htmlLength: html.length,
           slugsFound: slugs.slice(0, 5),
-          numbersOnMainPage: nm ? [1,2,3,4,5,6].map(i => parseInt(nm[i])) : null,
-          htmlSnippet: html.slice(0, 500),
+          numbersOnMainPage: nums ? [...nums, chance] : null,
+          ...detailInfo,
         });
       } catch (e) {
         return jsonResp({ error: (e as Error).message }, 500);
