@@ -378,11 +378,15 @@ async function doScrape(supabase: ReturnType<typeof createClient>, prevDate: str
 
   if (nums.length === 0 || chance === 0) return { success: false, tirage: null, error: "Numéros non trouvés" };
 
+  // Sanity check: rg["2"] (2 bons numéros) is ALWAYS > 0 in a real FDJ draw
+  // (~150 000 winners paying ~4€ each). A zero value means the HTML parse failed.
+  const rgParseOk = rg1["2"] > 0;
+
   const tirage: Tirage = { nums, chance, nums2, date, rapportGains: rg1, rapportGains2: rg2 };
   const { total, gainsDetails } = calculerGainsTirage(tirage);
-  tirage.gainTotal = total;
-  tirage.gainsDetails = gainsDetails;
-  tirage.gains = total;
+  tirage.gainTotal = rgParseOk ? total : undefined;
+  tirage.gainsDetails = rgParseOk ? gainsDetails : undefined;
+  tirage.gains = rgParseOk ? total : undefined;
 
   const isNew = prevDate !== tirage.date;
   const nombreTirages = prevNombreTirages + (isNew ? 1 : 0);
@@ -390,26 +394,39 @@ async function doScrape(supabase: ReturnType<typeof createClient>, prevDate: str
 
   // Write all updates in parallel
   const writes: Promise<unknown>[] = [
-    supabase.from("loto_cache").upsert(
-      { id: 1, tirage_data: tirage, cache_expiry: prochainTirage().toISOString(), nombre_tirages: nombreTirages },
-      { onConflict: "id" }
-    ),
-    // Always upsert into all_tirages (every draw)
     supabase.from("loto_all_tirages").upsert(
       { date_tirage: dateStr, tirage_data: tirage },
       { onConflict: "date_tirage" }
     ),
   ];
-  // Only insert into historique if winning
-  if (total > 0) {
+
+  if (rgParseOk) {
+    // Cache and historique only when rapportGains are reliable
     writes.push(
-      supabase.from("loto_historique").upsert(
-        { date_tirage: dateStr, tirage_data: tirage, gain_total: total },
-        { onConflict: "date_tirage" }
+      supabase.from("loto_cache").upsert(
+        { id: 1, tirage_data: tirage, cache_expiry: prochainTirage().toISOString(), nombre_tirages: nombreTirages },
+        { onConflict: "id" }
       )
     );
+    if (total > 0) {
+      writes.push(
+        supabase.from("loto_historique").upsert(
+          { date_tirage: dateStr, tirage_data: tirage, gain_total: total },
+          { onConflict: "date_tirage" }
+        )
+      );
+    }
   }
+
   await Promise.all(writes);
+
+  if (!rgParseOk) {
+    return {
+      success: false,
+      tirage,
+      error: "Structure HTML modifiée sur secretsdujeu — numéros sauvegardés, gains non calculés. Utiliser 'Saisie manuelle' ou 'Réparer l'historique'.",
+    };
+  }
 
   return { success: true, tirage };
 }
