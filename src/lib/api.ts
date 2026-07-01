@@ -3,9 +3,6 @@ import type { ApiLotoComplet, ApiBilan, ApiStats, ApiTest } from './types'
 
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 const ADMIN_SECRET = import.meta.env.VITE_ADMIN_SECRET as string
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string
-
-const ADMIN_API_URL = `${SUPABASE_URL}/functions/v1/admin-writes`
 
 interface CacheEntry { data: unknown; expires: number }
 const cache = new Map<string, CacheEntry>()
@@ -62,38 +59,3 @@ export async function fetchForceScrape(): Promise<ApiLotoComplet> {
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
   return resp.json() as Promise<ApiLotoComplet>
 }
-
-export async function fetchScrapeHistory(): Promise<{ success: boolean; fixed: number; results: Record<string, string> }> {
-  invalidateCache()
-  const resp = await fetch(`${BACKEND_URL}?action=scrape-history`, {
-    headers: {
-      'Authorization': `Bearer ${ANON_KEY}`,
-      'Content-Type': 'application/json',
-      'X-Admin-Secret': ADMIN_SECRET,
-    },
-  })
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-  return resp.json()
-}
-
-export async function postTirageManuel(payload: {
-  date: string
-  nums: number[]
-  chance: number
-  nums2?: number[]
-}): Promise<{ success: boolean; gain: number; gainsDetails: { grille: number; tirage: string; gain: number }[] }> {
-  invalidateCache()
-  const resp = await fetch(`${ADMIN_API_URL}?action=upsert_tirage_manual`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${ANON_KEY}`,
-      'Content-Type': 'application/json',
-      'X-Admin-Secret': ADMIN_SECRET,
-    },
-    body: JSON.stringify(payload),
-  })
-  const data = await resp.json()
-  if (!resp.ok) throw new Error(data.error ?? `HTTP ${resp.status}`)
-  return data
-}
-
