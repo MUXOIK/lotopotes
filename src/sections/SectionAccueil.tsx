@@ -1,15 +1,74 @@
-import { useEffect, useState, useCallback } from 'react'
-import { fetchLotoComplet } from '../lib/api'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { fetchLotoComplet, fetchForceScrape } from '../lib/api'
 import { GRILLES, CHANCES, COTISATION_TOTALE } from '../lib/constants'
 import type { ApiLotoComplet } from '../lib/types'
 import { Boule } from '../components/Boule'
 import { LoadingWithHint, ErrorMsg, Card, EmptyState } from '../components/ui'
 import { Confetti } from '../components/Confetti'
 
+// Loto draws happen Mon/Wed/Sat at 21:15 Paris time.
+// Returns the most recent expected draw date as a Date (UTC).
+function getLastExpectedTirageDate(): Date {
+  const DRAW_DAYS = [1, 3, 6] // Mon=1, Wed=3, Sat=6
+  const DRAW_HOUR_PARIS = 21
+  const DRAW_MINUTE_PARIS = 15
+
+  // Current Paris time
+  const now = new Date()
+  const parisTz = 'Europe/Paris'
+  const parts = new Intl.DateTimeFormat('fr-FR', {
+    timeZone: parisTz,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  }).formatToParts(now)
+
+  const get = (type: string) => parseInt(parts.find(p => p.type === type)!.value)
+  const parisYear = get('year')
+  const parisMonth = get('month') - 1
+  const parisDay = get('day')
+  const parisHour = get('hour')
+  const parisMinute = get('minute')
+
+  // Build a UTC Date corresponding to the last draw time in Paris
+  // Walk backwards up to 7 days to find last draw day
+  for (let daysBack = 0; daysBack <= 7; daysBack++) {
+    const candidate = new Date(Date.UTC(parisYear, parisMonth, parisDay - daysBack))
+    const candidateParis = new Date(
+      new Intl.DateTimeFormat('en-US', { timeZone: parisTz, year: 'numeric', month: '2-digit', day: '2-digit' })
+        .format(candidate) + ' ' + `${String(DRAW_HOUR_PARIS).padStart(2, '0')}:${String(DRAW_MINUTE_PARIS).padStart(2, '0')}:00`
+    )
+    const candidateDayOfWeek = candidateParis.getDay()
+
+    if (!DRAW_DAYS.includes(candidateDayOfWeek)) continue
+
+    // On draw day: only count this draw if we're past 21:15 Paris
+    if (daysBack === 0) {
+      if (parisHour < DRAW_HOUR_PARIS || (parisHour === DRAW_HOUR_PARIS && parisMinute < DRAW_MINUTE_PARIS)) {
+        continue // draw hasn't happened yet today
+      }
+    }
+
+    return candidateParis
+  }
+
+  // Fallback: 7 days ago (should never happen)
+  return new Date(now.getTime() - 7 * 24 * 3600 * 1000)
+}
+
+function isTirageStale(tirageDate: string | null | undefined): boolean {
+  if (!tirageDate) return true
+  const lastExpected = getLastExpectedTirageDate()
+  const cached = new Date(tirageDate)
+  // Stale if the cached draw date is more than 30 minutes before the last expected draw
+  return cached.getTime() < lastExpected.getTime() - 30 * 60 * 1000
+}
+
 export function SectionAccueil() {
   const [data, setData] = useState<ApiLotoComplet | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const autoScrapeRunning = useRef(false)
 
   const load = useCallback(async () => {
     try {
@@ -19,6 +78,18 @@ export function SectionAccueil() {
         setError('Impossible de contacter le serveur. Veuillez réessayer.')
       } else {
         setError(null)
+      }
+
+      // Auto-scrape silently if cache is stale and no scrape is already in progress
+      if (isTirageStale(result.tirage?.date) && !autoScrapeRunning.current) {
+        autoScrapeRunning.current = true
+        fetchForceScrape()
+          .then((fresh) => {
+            setData(fresh)
+            setError(null)
+          })
+          .catch(() => { /* silent — keep showing cached data */ })
+          .finally(() => { autoScrapeRunning.current = false })
       }
     } catch {
       setError('Impossible de contacter le serveur. Veuillez réessayer.')
