@@ -10,49 +10,51 @@ import { Confetti } from '../components/Confetti'
 // Returns the most recent expected draw date as a Date (UTC).
 function getLastExpectedTirageDate(): Date {
   const DRAW_DAYS = [1, 3, 6] // Mon=1, Wed=3, Sat=6
-  const DRAW_HOUR_PARIS = 21
-  const DRAW_MINUTE_PARIS = 15
-
-  // Current Paris time
   const now = new Date()
-  const parisTz = 'Europe/Paris'
-  const parts = new Intl.DateTimeFormat('fr-FR', {
-    timeZone: parisTz,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hour12: false,
-  }).formatToParts(now)
 
-  const get = (type: string) => parseInt(parts.find(p => p.type === type)!.value)
-  const parisYear = get('year')
-  const parisMonth = get('month') - 1
-  const parisDay = get('day')
-  const parisHour = get('hour')
-  const parisMinute = get('minute')
-
-  // Build a UTC Date corresponding to the last draw time in Paris
-  // Walk backwards up to 7 days to find last draw day
   for (let daysBack = 0; daysBack <= 7; daysBack++) {
-    const candidate = new Date(Date.UTC(parisYear, parisMonth, parisDay - daysBack))
-    const candidateParis = new Date(
-      new Intl.DateTimeFormat('en-US', { timeZone: parisTz, year: 'numeric', month: '2-digit', day: '2-digit' })
-        .format(candidate) + ' ' + `${String(DRAW_HOUR_PARIS).padStart(2, '0')}:${String(DRAW_MINUTE_PARIS).padStart(2, '0')}:00`
-    )
-    const candidateDayOfWeek = candidateParis.getDay()
+    const candidate = new Date(now)
+    candidate.setUTCDate(candidate.getUTCDate() - daysBack)
+    candidate.setUTCHours(0, 0, 0, 0)
 
-    if (!DRAW_DAYS.includes(candidateDayOfWeek)) continue
+    // Format to get Paris date parts reliably
+    const parts = new Intl.DateTimeFormat('fr-FR', {
+      timeZone: 'Europe/Paris',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      weekday: 'short',
+    }).formatToParts(candidate)
 
-    // On draw day: only count this draw if we're past 21:15 Paris
-    if (daysBack === 0) {
-      if (parisHour < DRAW_HOUR_PARIS || (parisHour === DRAW_HOUR_PARIS && parisMinute < DRAW_MINUTE_PARIS)) {
-        continue // draw hasn't happened yet today
-      }
-    }
+    const weekdayStr = parts.find(p => p.type === 'weekday')!.value
+    // fr-FR short weekday: lun=1, mar=2, mer=3, jeu=4, ven=5, sam=6, dim=0
+    const weekdayMap: Record<string, number> = { dim: 0, lun: 1, mar: 2, mer: 3, jeu: 4, ven: 5, sam: 6 }
+    const dow = weekdayMap[weekdayStr]
 
-    return candidateParis
+    if (!DRAW_DAYS.includes(dow)) continue
+
+    // Build the Paris draw datetime in UTC
+    const y = parseInt(parts.find(p => p.type === 'year')!.value)
+    const m = parseInt(parts.find(p => p.type === 'month')!.value) - 1
+    const d = parseInt(parts.find(p => p.type === 'day')!.value)
+
+    // Get UTC offset for Paris at 21:15 on that day using a probe Date
+    const probe = new Date(Date.UTC(y, m, d, 21, 15, 0))
+    const parisStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Paris',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(probe)
+    // parisStr is like "2026-07-02, 23:15" — adjust probe until Paris time matches 21:15
+    const probeHour = parseInt(parisStr.slice(12, 14))
+    const probeMin = parseInt(parisStr.slice(15, 17))
+    const offsetMs = (probeHour * 60 + probeMin - (21 * 60 + 15)) * 60_000
+    const drawUtc = new Date(probe.getTime() - offsetMs)
+
+    // If daysBack=0, only count if the draw has already happened (now >= drawUtc)
+    if (daysBack === 0 && now < drawUtc) continue
+
+    return drawUtc
   }
 
-  // Fallback: 7 days ago (should never happen)
   return new Date(now.getTime() - 7 * 24 * 3600 * 1000)
 }
 

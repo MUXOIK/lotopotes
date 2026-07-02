@@ -48,7 +48,6 @@ export async function fetchTest(): Promise<ApiTest> {
 }
 
 export async function fetchForceScrape(): Promise<ApiLotoComplet> {
-  invalidateCache()
   const resp = await fetch(`${BACKEND_URL}?action=force-scrape`, {
     headers: {
       'Authorization': `Bearer ${ANON_KEY}`,
@@ -57,5 +56,8 @@ export async function fetchForceScrape(): Promise<ApiLotoComplet> {
     },
   })
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-  return resp.json() as Promise<ApiLotoComplet>
+  const data = await resp.json() as ApiLotoComplet
+  // Populate the loto-complet cache with fresh data so subsequent calls don't re-fetch stale cache
+  cache.set('loto-complet', { data, expires: Date.now() + TTL })
+  return data
 }
