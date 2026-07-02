@@ -1,76 +1,50 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
-import { fetchLotoComplet, fetchForceScrape } from '../lib/api'
+import { useEffect, useState, useCallback } from 'react'
+import { fetchLotoComplet, fetchForceScrape, checkTirageInDB } from '../lib/api'
 import { GRILLES, CHANCES, COTISATION_TOTALE } from '../lib/constants'
 import type { ApiLotoComplet } from '../lib/types'
 import { Boule } from '../components/Boule'
 import { LoadingWithHint, ErrorMsg, Card, EmptyState } from '../components/ui'
 import { Confetti } from '../components/Confetti'
 
-// Loto draws happen Mon/Wed/Sat at 21:15 Paris time.
-// Returns the most recent expected draw date as a Date (UTC).
-function getLastExpectedTirageDate(): Date {
+// Returns YYYY-MM-DD (Paris timezone) of the last expected draw day (lun/mer/sam).
+// Only counts today if we're past 21:15 Paris time.
+function getLastExpectedTirageDate(): string {
   const DRAW_DAYS = [1, 3, 6] // Mon=1, Wed=3, Sat=6
   const now = new Date()
 
   for (let daysBack = 0; daysBack <= 7; daysBack++) {
-    const candidate = new Date(now)
-    candidate.setUTCDate(candidate.getUTCDate() - daysBack)
-    candidate.setUTCHours(0, 0, 0, 0)
+    const candidate = new Date(now.getTime() - daysBack * 86_400_000)
 
-    // Format to get Paris date parts reliably
     const parts = new Intl.DateTimeFormat('fr-FR', {
       timeZone: 'Europe/Paris',
       year: 'numeric', month: '2-digit', day: '2-digit',
-      weekday: 'short',
+      weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
     }).formatToParts(candidate)
 
-    const weekdayStr = parts.find(p => p.type === 'weekday')!.value
-    // fr-FR short weekday: lun=1, mar=2, mer=3, jeu=4, ven=5, sam=6, dim=0
+    const get = (type: string) => parts.find(p => p.type === type)!.value
     const weekdayMap: Record<string, number> = { dim: 0, lun: 1, mar: 2, mer: 3, jeu: 4, ven: 5, sam: 6 }
-    const dow = weekdayMap[weekdayStr]
+    const dow = weekdayMap[get('weekday')]
 
     if (!DRAW_DAYS.includes(dow)) continue
 
-    // Build the Paris draw datetime in UTC
-    const y = parseInt(parts.find(p => p.type === 'year')!.value)
-    const m = parseInt(parts.find(p => p.type === 'month')!.value) - 1
-    const d = parseInt(parts.find(p => p.type === 'day')!.value)
+    // On draw day, skip if we haven't reached 21:15 Paris yet
+    if (daysBack === 0) {
+      const h = parseInt(get('hour'))
+      const m = parseInt(get('minute'))
+      if (h < 21 || (h === 21 && m < 15)) continue
+    }
 
-    // Get UTC offset for Paris at 21:15 on that day using a probe Date
-    const probe = new Date(Date.UTC(y, m, d, 21, 15, 0))
-    const parisStr = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Europe/Paris',
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', hour12: false,
-    }).format(probe)
-    // parisStr is like "2026-07-02, 23:15" — adjust probe until Paris time matches 21:15
-    const probeHour = parseInt(parisStr.slice(12, 14))
-    const probeMin = parseInt(parisStr.slice(15, 17))
-    const offsetMs = (probeHour * 60 + probeMin - (21 * 60 + 15)) * 60_000
-    const drawUtc = new Date(probe.getTime() - offsetMs)
-
-    // If daysBack=0, only count if the draw has already happened (now >= drawUtc)
-    if (daysBack === 0 && now < drawUtc) continue
-
-    return drawUtc
+    return `${get('year')}-${get('month')}-${get('day')}`
   }
 
-  return new Date(now.getTime() - 7 * 24 * 3600 * 1000)
-}
-
-function isTirageStale(tirageDate: string | null | undefined): boolean {
-  if (!tirageDate) return true
-  const lastExpected = getLastExpectedTirageDate()
-  const cached = new Date(tirageDate)
-  // Stale if the cached draw date is more than 30 minutes before the last expected draw
-  return cached.getTime() < lastExpected.getTime() - 30 * 60 * 1000
+  // Fallback (should never happen)
+  return now.toISOString().slice(0, 10)
 }
 
 export function SectionAccueil() {
   const [data, setData] = useState<ApiLotoComplet | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const autoScrapeRunning = useRef(false)
 
   const load = useCallback(async () => {
     try {
@@ -82,16 +56,17 @@ export function SectionAccueil() {
         setError(null)
       }
 
-      // Auto-scrape silently if cache is stale and no scrape is already in progress
-      if (isTirageStale(result.tirage?.date) && !autoScrapeRunning.current) {
-        autoScrapeRunning.current = true
-        fetchForceScrape()
-          .then((fresh) => {
+      if (result.success) {
+        const lastExpected = getLastExpectedTirageDate()
+        if (!result.tirage || result.tirage.date < lastExpected) {
+          const existeEnBase = await checkTirageInDB(lastExpected)
+          if (existeEnBase) {
+            const fresh = await fetchLotoComplet()
             setData(fresh)
-            setError(null)
-          })
-          .catch(() => { /* silent — keep showing cached data */ })
-          .finally(() => { autoScrapeRunning.current = false })
+          } else {
+            fetchForceScrape().then(fresh => { setData(fresh) }).catch(() => {})
+          }
+        }
       }
     } catch {
       setError('Impossible de contacter le serveur. Veuillez réessayer.')

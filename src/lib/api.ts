@@ -1,4 +1,5 @@
 import { BACKEND_URL } from './constants'
+import { supabase } from './supabase'
 import type { ApiLotoComplet, ApiBilan, ApiStats, ApiTest } from './types'
 
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -60,4 +61,12 @@ export async function fetchForceScrape(): Promise<ApiLotoComplet> {
   // Populate the loto-complet cache with fresh data so subsequent calls don't re-fetch stale cache
   cache.set('loto-complet', { data, expires: Date.now() + TTL })
   return data
+}
+
+export async function checkTirageInDB(dateISO: string): Promise<boolean> {
+  const { count } = await supabase
+    .from('loto_all_tirages')
+    .select('*', { count: 'exact', head: true })
+    .eq('date_tirage', dateISO)
+  return (count ?? 0) > 0
 }
