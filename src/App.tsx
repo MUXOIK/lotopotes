@@ -116,15 +116,22 @@ function MoreMenu({ current, onSelect, onClose }: { current: Section; onSelect: 
 }
 
 function App() {
-  const [loggedIn, setLoggedIn] = useState(sessionStorage.getItem('app_ok') === '1')
+  const [loggedIn, setLoggedIn] = useState(false)
+  const [ready, setReady]       = useState(false)
   const [section, setSection]   = useState<Section>('accueil')
   const [showMore, setShowMore] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    setLoggedIn(sessionStorage.getItem('app_ok') === '1')
+    setReady(true)
+  }, [])
+
+  useEffect(() => {
     contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
   }, [section])
 
+  if (!ready) return null
   if (!loggedIn) return <LoginScreen onLogin={() => setLoggedIn(true)} />
 
   const moreActive = MORE_NAV.some(n => n.id === section)
