@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#111827" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Potes Loto" />
+    <meta name="apple-mobile-web-app-title" content="En charge" />
     <meta name="description" content="Les Potes Millionnaires — Syndicat Loto 2026-2027" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <link rel="icon" type="image/svg+xml" href="/lotopotes/favicon.svg" />
@@ -15,6 +15,8 @@
     <style>
       html, body, #root { height: 100%; background: #030712; }
       body { margin: 0; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .loader-spin { animation: spin 1s linear infinite; }
     </style>
     <script type="module" crossorigin src="/lotopotes/assets/index-CJL4NTKV.js"></script>
     <link rel="modulepreload" crossorigin href="/lotopotes/assets/rolldown-runtime-Bh1tDfsg.js">
@@ -23,6 +25,18 @@
     <link rel="stylesheet" crossorigin href="/lotopotes/assets/index-sKdCWjkb.css">
   <link rel="manifest" href="/lotopotes/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/lotopotes/registerSW.js"></script></head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div style="position:fixed;inset:0;background:#030712;display:flex;align-items:center;justify-content:center;padding:1rem;">
+        <div style="background:#1f2937;border-radius:1rem;padding:2rem;border:2px solid #eab308;max-width:24rem;width:100%;text-align:center;box-shadow:0 25px 50px -12px rgba(0,0,0,0.8);">
+          <div style="font-size:3.75rem;margin-bottom:1rem;">🎲</div>
+          <h1 style="font-size:1.25rem;font-weight:700;color:#facc15;margin:0 0 0.25rem;font-family:system-ui,sans-serif;">LES POTES MILLIONNAIRES</h1>
+          <p style="color:#6b7280;font-size:0.875rem;margin:0 0 1.5rem;font-family:system-ui,sans-serif;">Syndicat Loto — Saison 2026-2027</p>
+          <div style="display:flex;align-items:center;justify-content:center;gap:0.5rem;">
+            <svg class="loader-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.5" stroke-linecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+            <p style="color:#9ca3af;font-size:0.875rem;margin:0;font-family:system-ui,sans-serif;">Chargement de la page...</p>
+          </div>
+        </div>
+      </div>
+    </div>
   </body>
 </html>
