@@ -12,7 +12,7 @@ export default defineConfig(({ command }) => ({
       includeAssets: ['apple-touch-icon.png', 'favicon.svg'],
       manifest: {
         name: 'Les Potes Millionnaires',
-        short_name: 'Potes Loto',
+        short_name: 'En charge',
         description: 'Syndicat Loto - Saison 2026-2027 - 13 participants',
         theme_color: '#111827',
         background_color: '#111827',
@@ -31,6 +31,7 @@ export default defineConfig(({ command }) => ({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
+        globIgnores: ['**/image*.png'],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
