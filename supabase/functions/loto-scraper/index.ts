@@ -244,17 +244,25 @@ async function doScrape(supabase: ReturnType<typeof createClient>, prevDate: str
     return { success: false, tirage: null, error: (e as Error).message };
   }
 
+  // Keys are unaccented because secretsdujeu.com's URL slugs never contain
+  // accents (e.g. "tirage-loto-du-samedi-1-aout-2026", "...-fevrier-...",
+  // "...-decembre-..."). We also strip accents from the parsed month name
+  // before the lookup below, in case that ever changes.
   const MOIS_FR: Record<string, string> = {
-    janvier: "01", février: "02", mars: "03", avril: "04", mai: "05", juin: "06",
-    juillet: "07", août: "08", septembre: "09", octobre: "10", novembre: "11", décembre: "12",
+    janvier: "01", fevrier: "02", mars: "03", avril: "04", mai: "05", juin: "06",
+    juillet: "07", aout: "08", septembre: "09", octobre: "10", novembre: "11", decembre: "12",
   };
+
+  function stripAccents(s: string): string {
+    return s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  }
 
   function slugToDate(slug: string): Date | null {
     // slug format: tirage-loto-du-DAYNAME-DD-MONTHNAME-YYYY
     const m = /tirage-loto-du-\w+-(\d{1,2})-(\w+)-(\d{4})$/.exec(slug);
     if (!m) return null;
     const [, dd, moisRaw, yyyy] = m;
-    const mois = MOIS_FR[moisRaw.toLowerCase()];
+    const mois = MOIS_FR[stripAccents(moisRaw.toLowerCase())];
     if (!mois) return null;
     const d = new Date(`${yyyy}-${mois}-${dd.padStart(2, "0")}T20:50:00.000Z`);
     return isNaN(d.getTime()) ? null : d;
