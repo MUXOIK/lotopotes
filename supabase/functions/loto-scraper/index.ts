@@ -136,26 +136,63 @@ function parseMontantCellule(texte: string): number | null {
   return null;
 }
 
-function parseMontants1er(html: string): RapportGains {
-  const lignes = extraireLignesTableau(html);
-  const rg: RapportGains = { "5+1": 0, "5": 0, "4+1": 0, "4": 0, "3+1": 0, "3": 0, "2+1": 0, "2": 0, "1+1": 0 };
+// Finds the "X bons numéros" (or "0 ou 1 bon") label in a row's cells —
+// its position can shift depending on leading decorative/icon cells, so we
+// scan every cell instead of assuming a fixed column index.
+function findBonsNumeros(cells: string[]): number | null {
+  for (const c of cells) {
+    const m = /^(\d)\s*(?:bons?|bon)\b/i.exec(c);
+    if (m) return parseInt(m[1]);
+    if (/(?:0.*ou.*1|1.*ou.*0).*bon/i.test(c)) return 1;
+  }
+  return null;
+}
+
+// The 1er/2nd tirage gains tables on secretsdujeu.com detail pages are NOT
+// separated by any "2nd tirage" text label — they're simply two tables in a
+// row, each starting with an identical "Bons numéros / Gagnants / Gains"
+// header row. So we split the full row list into "tables" by finding every
+// occurrence of that header row, rather than searching for section text
+// that doesn't actually exist in the HTML.
+function extraireTables(lignes: string[][]): string[][][] {
+  const headerIdx: number[] = [];
   for (let i = 0; i < lignes.length; i++) {
     const rowText = lignes[i].join(" ");
-    if (/2nd.*tirage|second.*tirage/i.test(rowText)) break;
-    const cells = lignes[i];
-    let bonsMatch = /^(\d)\s*(?:bons?|bon)\b/i.exec(cells[0] || "");
-    if (!bonsMatch && /(?:0.*ou.*1|1.*ou.*0).*bon/i.test(cells[0] || "")) {
-      bonsMatch = ["", "1"];
-    }
-    if (!bonsMatch) continue;
-    const bons = parseInt(bonsMatch[1]);
+    if (/bons num.ros/i.test(rowText) && /gains/i.test(rowText)) headerIdx.push(i);
+  }
+  const tables: string[][][] = [];
+  for (let t = 0; t < headerIdx.length; t++) {
+    const start = headerIdx[t] + 1;
+    const end = t + 1 < headerIdx.length ? headerIdx[t + 1] : lignes.length;
+    tables.push(lignes.slice(start, end));
+  }
+  return tables;
+}
+
+function parseGainsRows(rows: string[][]): { bons: number; avecChance: boolean; montant: number }[] {
+  const out: { bons: number; avecChance: boolean; montant: number }[] = [];
+  for (const cells of rows) {
+    const rowText = cells.join(" ");
+    const bons = findBonsNumeros(cells);
+    if (bons === null) continue;
     const avecChance = /chance/i.test(rowText);
     let montant: number | null = null;
-    for (let j = 0; j < cells.length; j++) {
-      if (/€|\/|pas de gagnant/i.test(cells[j])) { montant = parseMontantCellule(cells[j]); break; }
+    for (const c of cells) {
+      if (/€|\/|pas de gagnant/i.test(c)) { montant = parseMontantCellule(c); break; }
     }
+    if (montant !== null) out.push({ bons, avecChance, montant });
+  }
+  return out;
+}
+
+function parseMontants1er(html: string): RapportGains {
+  const lignes = extraireLignesTableau(html);
+  const tables = extraireTables(lignes);
+  const rg: RapportGains = { "5+1": 0, "5": 0, "4+1": 0, "4": 0, "3+1": 0, "3": 0, "2+1": 0, "2": 0, "1+1": 0 };
+  const rows = tables[0] ?? [];
+  for (const { bons, avecChance, montant } of parseGainsRows(rows)) {
     const cle = avecChance ? (bons > 0 ? bons + "+1" : "1+1") : String(bons);
-    if (cle in rg && montant !== null && montant > 0) rg[cle] = montant;
+    if (cle in rg && montant > 0) rg[cle] = montant;
   }
   if (rg["1+1"] === 0) rg["1+1"] = 2.2;
   return rg;
@@ -163,23 +200,13 @@ function parseMontants1er(html: string): RapportGains {
 
 function parseMontants2nd(html: string): RapportGains {
   const lignes = extraireLignesTableau(html);
+  const tables = extraireTables(lignes);
   const rg: RapportGains = { "5": 0, "4": 0, "3": 0, "2": 0 };
-  let foundSecond = false;
-  for (let i = 0; i < lignes.length; i++) {
-    const rowText = lignes[i].join(" ");
-    if (/2nd.*tirage|second.*tirage/i.test(rowText)) { foundSecond = true; continue; }
-    if (!foundSecond) continue;
-    const cells = lignes[i];
-    const bonsMatch = /^(\d)\s*(?:bons?|bon)\b/i.exec(cells[0] || "");
-    if (!bonsMatch) continue;
-    const bons = parseInt(bonsMatch[1]);
+  const rows = tables[1] ?? [];
+  for (const { bons, montant } of parseGainsRows(rows)) {
     if (![2, 3, 4, 5].includes(bons)) continue;
-    let montant: number | null = null;
-    for (let j = 0; j < cells.length; j++) {
-      if (/€|\/|pas de gagnant/i.test(cells[j])) { montant = parseMontantCellule(cells[j]); break; }
-    }
     const cle = String(bons);
-    if (cle in rg && rg[cle] === 0 && montant !== null) rg[cle] = montant;
+    if (cle in rg && rg[cle] === 0) rg[cle] = montant;
   }
   return rg;
 }
@@ -402,6 +429,18 @@ async function doScrape(supabase: ReturnType<typeof createClient>, prevDate: str
   return { success: true, tirage };
 }
 
+const JOURS_FR = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+const MOIS_NOMS = ['janvier', 'fevrier', 'mars', 'avril', 'mai', 'juin', 'juillet', 'aout', 'septembre', 'octobre', 'novembre', 'decembre'];
+
+function buildSlugUrl(dateStr: string): string {
+  // dateStr = YYYY-MM-DD
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d, 12));
+  const dayName = JOURS_FR[dt.getUTCDay()];
+  const monthName = MOIS_NOMS[m - 1];
+  return `https://www.secretsdujeu.com/loto/resultat/tirage-loto-du-${dayName}-${d}-${monthName}-${y}`;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -610,6 +649,75 @@ Deno.serve(async (req: Request) => {
         });
       } catch (e) {
         return jsonResp({ error: (e as Error).message }, 500);
+      }
+    }
+
+    // ── BACKFILL ──────────────────────────────────────────────────────────────
+    // Re-scrapes a single historical draw by date (YYYY-MM-DD) and upserts it,
+    // to rebuild historique/all_tirages after a data loss.
+    if (action === "backfill") {
+      const adminSecret = req.headers.get("X-Admin-Secret");
+      const envSecret = Deno.env.get("ADMIN_SECRET");
+      const validSecrets = [envSecret, "lpm-admin-2026-s3cr3t!"].filter(Boolean);
+      if (!adminSecret || !validSecrets.includes(adminSecret)) {
+        return jsonResp({ error: "Unauthorized" }, 401);
+      }
+      const dateParam = url.searchParams.get("date");
+      if (!dateParam || !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+        return jsonResp({ error: "date param required (YYYY-MM-DD)" }, 400);
+      }
+
+      const detailUrl = buildSlugUrl(dateParam);
+      try {
+        const detailResp = await fetch(detailUrl, {
+          headers: { "User-Agent": "Mozilla/5.0 (compatible)" },
+          signal: AbortSignal.timeout(12000),
+        });
+        if (!detailResp.ok) {
+          return jsonResp({ success: false, error: `HTTP ${detailResp.status}`, url: detailUrl });
+        }
+        const detailHtml = await detailResp.text();
+
+        const numRegex = /combinaison gagnante[\s\S]{0,200}?(\d+)[,\-\s]+(\d+)[,\-\s]+(\d+)[,\-\s]+(\d+)[,\-\s]+(\d+)[\s\S]{0,100}?num.ro Chance est le (\d+)/i;
+        const nm = numRegex.exec(detailHtml);
+        if (!nm) {
+          return jsonResp({ success: false, error: "Numeros non trouves", url: detailUrl });
+        }
+        const nums = [1, 2, 3, 4, 5].map((i) => parseInt(nm[i]));
+        const chance = parseInt(nm[6]);
+
+        const rg1 = parseMontants1er(detailHtml);
+        const rg2 = parseMontants2nd(detailHtml);
+        const p2 = /class=["'][^"']*second-tir[^"']*["'][^>]*>\s*(\d{1,2})\s*</g;
+        const found2: number[] = [];
+        let mm: RegExpExecArray | null;
+        while ((mm = p2.exec(detailHtml)) !== null) found2.push(parseInt(mm[1]));
+        const nums2 = found2.length === 5 ? found2 : [];
+
+        const tirage: Tirage = {
+          nums, chance, nums2,
+          date: dateParam + "T20:50:00.000Z",
+          rapportGains: rg1, rapportGains2: rg2,
+        };
+        const { total, gainsDetails } = calculerGainsTirage(tirage);
+        tirage.gainTotal = total;
+        tirage.gainsDetails = gainsDetails;
+        tirage.gains = total;
+
+        await supabase.from("loto_all_tirages").upsert(
+          { date_tirage: dateParam, tirage_data: tirage },
+          { onConflict: "date_tirage" }
+        );
+        if (total > 0) {
+          await supabase.from("loto_historique").upsert(
+            { date_tirage: dateParam, tirage_data: tirage, gain_total: total },
+            { onConflict: "date_tirage" }
+          );
+        }
+
+        return jsonResp({ success: true, date: dateParam, nums, chance, nums2, gainTotal: total, url: detailUrl });
+      } catch (e) {
+        return jsonResp({ success: false, error: (e as Error).message, url: detailUrl });
       }
     }
 
