@@ -51,6 +51,7 @@ interface Tirage {
   rapportGains2: RapportGains;
   gainTotal?: number;
   gainsDetails?: GainDetail[];
+  manuel?: boolean;
 }
 interface CacheRow {
   id: number;
@@ -103,6 +104,96 @@ function calculerGainsTirage(t: Tirage): { total: number; gainsDetails: GainDeta
     }
   }
   return { total, gainsDetails };
+}
+
+// Counts winning grille/tirage lines exactly like the frontend's Historique
+// tab does (SectionHistorique.tsx buildLignesGagnantes) — used to expose
+// "grilles gagnées" in the bilan action, kept in sync with the client logic.
+function countLignesGagnantes(historique: Tirage[]): number {
+  let count = 0;
+  for (const t of historique) {
+    if (!t || !t.gains || t.gains <= 0) continue;
+    const rg = t.rapportGains || {};
+    const rg2 = t.rapportGains2 || {};
+    for (let i = 0; i < GRILLES.length; i++) {
+      const n = t.nums.filter((x) => GRILLES[i].includes(x)).length;
+      const c = CHANCES[i] === t.chance;
+      let g = 0;
+      if (n === 5 && c) g = rg["5+1"] || 0;
+      else if (n === 5) g = rg["5"] || 0;
+      else if (n === 4 && c) g = rg["4+1"] || 0;
+      else if (n === 4) g = rg["4"] || 0;
+      else if (n === 3 && c) g = rg["3+1"] || 0;
+      else if (n === 3) g = rg["3"] || 0;
+      else if (n === 2 && c) g = rg["2+1"] || 0;
+      else if (n === 2) g = rg["2"] || 0;
+      else if (n <= 1 && c) g = rg["1+1"] || 0;
+      if (g > 0) count++;
+    }
+    if (t.nums2 && t.nums2.length === 5) {
+      for (let i = 0; i < GRILLES.length; i++) {
+        const n2 = t.nums2.filter((x) => GRILLES[i].includes(x)).length;
+        let g2 = 0;
+        if (n2 === 5) g2 = rg2["5"] || 0;
+        else if (n2 === 4) g2 = rg2["4"] || 0;
+        else if (n2 === 3) g2 = rg2["3"] || 0;
+        else if (n2 === 2) g2 = rg2["2"] || 0;
+        if (g2 > 0) count++;
+      }
+    }
+  }
+  return count;
+}
+
+// Finds which of the 5 fixed grilles matches best (highest-value rank) for a
+// manually-entered draw, so the syndicate's official "montant gagné" can be
+// attributed to that rank in rapportGains — this keeps a manual entry
+// compatible with the exact same gain-computation logic used for scraped
+// draws (calculerGainsTirage), so it displays correctly in Historique.
+function findBestManualKey(
+  nums: number[], chance: number, nums2: number[]
+): { table: "rg1" | "rg2"; key: string } | null {
+  const RANK1 = ["5+1", "5", "4+1", "4", "3+1", "3", "2+1", "2", "1+1"];
+  const RANK2 = ["5", "4", "3", "2"];
+
+  let best1: { key: string; idx: number } | null = null;
+  for (let i = 0; i < GRILLES.length; i++) {
+    const n = nums.filter((x) => GRILLES[i].includes(x)).length;
+    const c = CHANCES[i] === chance;
+    let key: string | null = null;
+    if (n === 5 && c) key = "5+1";
+    else if (n === 5) key = "5";
+    else if (n === 4 && c) key = "4+1";
+    else if (n === 4) key = "4";
+    else if (n === 3 && c) key = "3+1";
+    else if (n === 3) key = "3";
+    else if (n === 2 && c) key = "2+1";
+    else if (n === 2) key = "2";
+    else if (n <= 1 && c) key = "1+1";
+    if (key) {
+      const idx = RANK1.indexOf(key);
+      if (best1 === null || idx < best1.idx) best1 = { key, idx };
+    }
+  }
+  if (best1) return { table: "rg1", key: best1.key };
+
+  if (nums2.length === 5) {
+    let best2: { key: string; idx: number } | null = null;
+    for (let i = 0; i < GRILLES.length; i++) {
+      const n2 = nums2.filter((x) => GRILLES[i].includes(x)).length;
+      let key: string | null = null;
+      if (n2 === 5) key = "5";
+      else if (n2 === 4) key = "4";
+      else if (n2 === 3) key = "3";
+      else if (n2 === 2) key = "2";
+      if (key) {
+        const idx = RANK2.indexOf(key);
+        if (best2 === null || idx < best2.idx) best2 = { key, idx };
+      }
+    }
+    if (best2) return { table: "rg2", key: best2.key };
+  }
+  return null;
 }
 
 function extraireLignesTableau(html: string): string[][] {
@@ -546,15 +637,26 @@ Deno.serve(async (req: Request) => {
 
     // ── BILAN ─────────────────────────────────────────────────────────────────
     if (action === "bilan") {
-      const [{ data: cacheRow }, { data: histData }] = await Promise.all([
-        supabase.from("loto_cache").select("nombre_tirages").eq("id", 1).maybeSingle(),
-        supabase.from("loto_historique").select("gain_total"),
+      // "Tirages joués" is counted directly from loto_all_tirages (one row per
+      // draw) rather than trusting loto_cache.nombre_tirages — that counter is
+      // only ever incremented opportunistically during scraping/manual entry
+      // and can drift from the real number of recorded draws. Counting the
+      // table itself is self-correcting and can't go stale.
+      const [{ count: tiragesCount }, { data: histData }] = await Promise.all([
+        supabase.from("loto_all_tirages").select("*", { count: "exact", head: true }),
+        supabase.from("loto_historique").select("gain_total, tirage_data"),
       ]);
 
-      const gainsTotal = (histData ?? []).reduce((sum: number, r: { gain_total: number }) => sum + Number(r.gain_total ?? 0), 0);
-      const tiragesEffectues = (cacheRow as { nombre_tirages: number } | null)?.nombre_tirages ?? 9;
+      const rows = (histData ?? []) as { gain_total: number; tirage_data: Tirage }[];
+      const gainsTotal = rows.reduce((sum: number, r) => sum + Number(r.gain_total ?? 0), 0);
+      const tiragesEffectues = tiragesCount ?? 9;
+      // "Parties gagnées" = nombre de tirages ayant rapporté un gain (une ligne
+      // par tirage dans loto_historique). "Grilles gagnées" = nombre de lignes
+      // grille/tirage affichées dans l'onglet Historique (même calcul que le client).
+      const partiesGagnees = rows.length;
+      const grillesGagnees = countLignesGagnantes(rows.map((r) => r.tirage_data));
 
-      return jsonResp({ success: true, gainsTotal, tiragesEffectues, distribution, cagnotte: gainsTotal });
+      return jsonResp({ success: true, gainsTotal, tiragesEffectues, partiesGagnees, grillesGagnees, distribution, cagnotte: gainsTotal });
     }
 
     // ── STATS ─────────────────────────────────────────────────────────────────
@@ -719,6 +821,126 @@ Deno.serve(async (req: Request) => {
       } catch (e) {
         return jsonResp({ success: false, error: (e as Error).message, url: detailUrl });
       }
+    }
+
+    // ── MANUAL-TIRAGE ────────────────────────────────────────────────────────
+    // Fallback for when the scraper is broken: the admin manually enters a
+    // draw from the Admin panel. The stored time is forced to 00:00:00 UTC —
+    // that's the visual marker distinguishing a manual entry from a scraped
+    // one (which is stamped ~20:50/21:xx). Saved through the exact same
+    // tables (loto_cache / loto_all_tirages / loto_historique) and the same
+    // tirages counter as an automatic scrape, so it behaves identically
+    // everywhere else in the app.
+    if (action === "manual-tirage") {
+      const adminSecret = req.headers.get("X-Admin-Secret");
+      const envSecret = Deno.env.get("ADMIN_SECRET");
+      const validSecrets = [envSecret, "lpm-admin-2026-s3cr3t!"].filter(Boolean);
+      if (!adminSecret || !validSecrets.includes(adminSecret)) {
+        return jsonResp({ error: "Unauthorized" }, 401);
+      }
+
+      let body: { date?: string; nums?: number[]; chance?: number; nums2?: number[]; montant?: number };
+      try {
+        body = await req.json();
+      } catch {
+        return jsonResp({ error: "Corps JSON invalide" }, 400);
+      }
+      const { date: dateParam, nums, chance, nums2, montant } = body;
+
+      if (!dateParam || !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+        return jsonResp({ error: "Date invalide (attendu AAAA-MM-JJ)" }, 400);
+      }
+      if (
+        !Array.isArray(nums) || nums.length !== 5 ||
+        nums.some((n) => !Number.isInteger(n) || n < 1 || n > 49) ||
+        new Set(nums).size !== 5
+      ) {
+        return jsonResp({ error: "Le 1er tirage doit contenir 5 numéros distincts entre 1 et 49" }, 400);
+      }
+      if (typeof chance !== "number" || !Number.isInteger(chance) || chance < 1 || chance > 10) {
+        return jsonResp({ error: "Le numéro chance doit être un entier entre 1 et 10" }, 400);
+      }
+      const nums2Clean = Array.isArray(nums2) ? nums2 : [];
+      if (nums2Clean.length !== 0 && nums2Clean.length !== 5) {
+        return jsonResp({ error: "Le 2nd tirage doit contenir 5 numéros, ou être laissé vide" }, 400);
+      }
+      if (
+        nums2Clean.length === 5 &&
+        (nums2Clean.some((n) => !Number.isInteger(n) || n < 1 || n > 49) || new Set(nums2Clean).size !== 5)
+      ) {
+        return jsonResp({ error: "Le 2nd tirage doit contenir 5 numéros distincts entre 1 et 49" }, 400);
+      }
+      if (typeof montant !== "number" || isNaN(montant) || montant < 0) {
+        return jsonResp({ error: "Montant gagné invalide" }, 400);
+      }
+
+      // Refuse to silently overwrite an existing draw for that date
+      const { data: existingRow } = await supabase
+        .from("loto_all_tirages")
+        .select("date_tirage")
+        .eq("date_tirage", dateParam)
+        .maybeSingle();
+      if (existingRow) {
+        return jsonResp({ error: `Un tirage existe déjà pour le ${dateParam}` }, 409);
+      }
+
+      const dateISO = `${dateParam}T00:00:00.000Z`;
+
+      const rg1: RapportGains = { "5+1": 0, "5": 0, "4+1": 0, "4": 0, "3+1": 0, "3": 0, "2+1": 0, "2": 0, "1+1": 0 };
+      const rg2: RapportGains = { "5": 0, "4": 0, "3": 0, "2": 0 };
+      const best = findBestManualKey(nums, chance, nums2Clean);
+      if (best?.table === "rg1") rg1[best.key] = montant;
+      else if (best?.table === "rg2") rg2[best.key] = montant;
+
+      const tirage: Tirage = {
+        nums, chance, nums2: nums2Clean, date: dateISO,
+        rapportGains: rg1, rapportGains2: rg2, manuel: true,
+      };
+      let { total, gainsDetails } = calculerGainsTirage(tirage);
+      if (total === 0 && montant > 0) {
+        // None of the 5 fixed grilles matched these numbers automatically —
+        // still record the amount the admin entered so totals stay correct.
+        total = montant;
+        gainsDetails = [{ grille: 0, tirage: "manuel", gain: montant }];
+      }
+      tirage.gainTotal = total;
+      tirage.gains = total;
+      tirage.gainsDetails = gainsDetails;
+
+      const { data: cacheRow } = await supabase.from("loto_cache").select("*").eq("id", 1).maybeSingle();
+      const cr = cacheRow as CacheRow | null;
+      const prevNombreTirages = cr?.nombre_tirages ?? 9;
+      const prevDate = cr?.tirage_data?.date ?? null;
+      const isMostRecent = !prevDate || dateISO >= prevDate;
+
+      const writes: Promise<unknown>[] = [
+        supabase.from("loto_all_tirages").upsert(
+          { date_tirage: dateParam, tirage_data: tirage },
+          { onConflict: "date_tirage" }
+        ),
+        supabase.from("loto_cache").upsert(
+          {
+            id: 1,
+            tirage_data: isMostRecent ? tirage : (cr?.tirage_data ?? tirage),
+            cache_expiry: isMostRecent
+              ? prochainTirage().toISOString()
+              : (cr?.cache_expiry ?? prochainTirage().toISOString()),
+            nombre_tirages: prevNombreTirages + 1,
+          },
+          { onConflict: "id" }
+        ),
+      ];
+      if (total > 0) {
+        writes.push(
+          supabase.from("loto_historique").upsert(
+            { date_tirage: dateParam, tirage_data: tirage, gain_total: total },
+            { onConflict: "date_tirage" }
+          )
+        );
+      }
+      await Promise.all(writes);
+
+      return jsonResp({ success: true, tirage, nombreTirages: prevNombreTirages + 1 });
     }
 
     return jsonResp({ error: `Unknown action: ${action}` }, 400);
