@@ -19,7 +19,7 @@ export interface RapportGains2 {
 
 export interface GainDetail {
   grille: number
-  tirage: '1er' | '2nd'
+  tirage: '1er' | '2nd' | 'manuel'
   gain: number
 }
 
@@ -33,6 +33,7 @@ export interface Tirage {
   rapportGains2: RapportGains2
   gainTotal?: number
   gainsDetails?: GainDetail[]
+  manuel?: boolean
 }
 
 export interface ParticipantDistribution {
@@ -54,6 +55,8 @@ export interface ApiBilan {
   success: boolean
   gainsTotal: number
   tiragesEffectues: number
+  partiesGagnees: number
+  grillesGagnees: number
   distribution: Record<string, ParticipantDistribution>
   cagnotte: number
 }
