@@ -48,6 +48,8 @@ export function SectionBilan() {
   const roi = gains > 0 ? ((gains / COTISATION_TOTALE) * 100).toFixed(1) : '0.0'
   const gainMoyen = tirages > 0 ? (gains / tirages).toFixed(2) : '0.00'
   const gainParPart = (gains / NB_PARTICIPANTS).toFixed(2)
+  const partiesGagnees = data.partiesGagnees ?? 0
+  const grillesGagnees = data.grillesGagnees ?? 0
 
   return (
     <div className="space-y-3">
@@ -78,6 +80,8 @@ export function SectionBilan() {
         <KpiCard label="ROI" value={roi + '%'} color="text-yellow-300" bg="bg-yellow-900/40" border="border-yellow-700/50" />
         <KpiCard label="Gain moyen / tirage" value={gainMoyen + '€'} color="text-gray-200" bg="bg-gray-800/60" border="border-gray-600/50" />
         <KpiCard label="Gain par participant" value={gainParPart + '€'} color="text-gray-200" bg="bg-gray-800/60" border="border-gray-600/50" />
+        <KpiCard label="Parties gagnées" value={String(partiesGagnees)} color="text-green-300" bg="bg-green-900/40" border="border-green-700/50" />
+        <KpiCard label="Grilles gagnées" value={String(grillesGagnees)} color="text-blue-300" bg="bg-blue-900/40" border="border-blue-700/50" />
       </div>
     </div>
   )
