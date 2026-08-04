@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { fetchTest, fetchBilan, fetchForceScrape, invalidateCache } from '../lib/api'
+import { fetchTest, fetchBilan, fetchForceScrape, invalidateCache, insertManualTirage } from '../lib/api'
 import { PARTICIPANTS, ADMIN_PASSWORD, NB_PARTICIPANTS } from '../lib/constants'
 import type { Paiement, Virement } from '../lib/types'
 import { Spinner, Card } from '../components/ui'
@@ -21,6 +21,19 @@ async function adminFetch(action: string, body?: unknown) {
   const data = await resp.json()
   if (!resp.ok) throw new Error(data.error ?? `HTTP ${resp.status}`)
   return data
+}
+
+// Parses a free-form "7,12,23,34,45" (or space/dash separated) list of loto
+// numbers. Returns null if the count doesn't match or numbers are invalid/duplicated.
+function parseNumsList(input: string, expectedLen: number): number[] | null {
+  const trimmed = input.trim()
+  if (trimmed === '' && expectedLen === 0) return []
+  const parts = trimmed.split(/[\s,;-]+/).filter(Boolean)
+  if (parts.length !== expectedLen) return null
+  const nums = parts.map((p) => parseInt(p, 10))
+  if (nums.some((n) => !Number.isInteger(n) || n < 1 || n > 49)) return null
+  if (new Set(nums).size !== nums.length) return null
+  return nums
 }
 
 function AdminLogin({ onLogin }: { onLogin: () => void }) {
@@ -100,6 +113,14 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
 
   const [scrapeLoading, setScrapeLoading] = useState(false)
   const [scrapeMsg, setScrapeMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const [manDate, setManDate] = useState('')
+  const [manNums1, setManNums1] = useState('')
+  const [manChance, setManChance] = useState('')
+  const [manNums2, setManNums2] = useState('')
+  const [manMontant, setManMontant] = useState('')
+  const [manSaving, setManSaving] = useState(false)
+  const [manMsg, setManMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
   const loadLatestPaiementAndVirements = useCallback(async () => {
     const { data: paiements } = await supabase
@@ -187,6 +208,54 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
     } finally {
       setScrapeLoading(false)
       setTimeout(() => setScrapeMsg(null), 8000)
+    }
+  }
+
+  const enregistrerTirageManuel = async () => {
+    setManMsg(null)
+    if (!manDate) {
+      setManMsg({ ok: false, text: '❌ Veuillez saisir une date.' })
+      return
+    }
+    const nums = parseNumsList(manNums1, 5)
+    if (!nums) {
+      setManMsg({ ok: false, text: '❌ 1er tirage : 5 numéros distincts entre 1 et 49 (ex: 7,12,23,34,45).' })
+      return
+    }
+    const chance = parseInt(manChance, 10)
+    if (!Number.isInteger(chance) || chance < 1 || chance > 10) {
+      setManMsg({ ok: false, text: '❌ Numéro chance invalide (entre 1 et 10).' })
+      return
+    }
+    const nums2 = parseNumsList(manNums2, manNums2.trim() === '' ? 0 : 5)
+    if (nums2 === null) {
+      setManMsg({ ok: false, text: '❌ 2nd tirage : 5 numéros distincts entre 1 et 49, ou laissez vide.' })
+      return
+    }
+    const montant = parseFloat(manMontant)
+    if (isNaN(montant) || montant < 0) {
+      setManMsg({ ok: false, text: '❌ Montant gagné invalide.' })
+      return
+    }
+
+    setManSaving(true)
+    try {
+      await insertManualTirage({ date: manDate, nums, chance, nums2, montant })
+      setManMsg({
+        ok: true,
+        text: `✅ Tirage manuel du ${manDate} enregistré — ${montant.toFixed(2)}€ — compteur de tirages mis à jour`,
+      })
+      setManDate('')
+      setManNums1('')
+      setManChance('')
+      setManNums2('')
+      setManMontant('')
+      await loadSysInfo()
+    } catch (e) {
+      setManMsg({ ok: false, text: `❌ ${(e as Error).message}` })
+    } finally {
+      setManSaving(false)
+      setTimeout(() => setManMsg(null), 8000)
     }
   }
 
@@ -282,6 +351,72 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
           <p className={`mt-2 text-sm ${scrapeMsg.ok ? 'text-green-400' : 'text-orange-400'}`}>
             {scrapeMsg.text}
           </p>
+        )}
+      </Card>
+
+      {/* Saisie manuelle d'un tirage (fallback en cas de bug de scraping) */}
+      <Card className="border-pink-700 bg-pink-900/20">
+        <h3 className="text-base font-bold text-pink-300 mb-1">📝 Saisir un tirage manuellement</h3>
+        <p className="text-xs text-gray-400 mb-3">
+          À utiliser uniquement si le scraping automatique a échoué pour un tirage. L'heure est
+          automatiquement fixée à 00:00 pour indiquer une saisie manuelle. Le tirage est enregistré
+          exactement comme un scraping (compteur de tirages +1).
+        </p>
+
+        <label className="block text-xs text-gray-400 mb-1">Date du tirage</label>
+        <input
+          type="date"
+          value={manDate}
+          onChange={(e) => setManDate(e.target.value)}
+          className="w-full p-3 rounded-lg bg-gray-900 border-2 border-pink-700 text-white text-sm mb-2 focus:border-pink-500 outline-none"
+        />
+
+        <label className="block text-xs text-gray-400 mb-1">1er tirage — 5 numéros (ex: 7,12,23,34,45)</label>
+        <input
+          type="text"
+          value={manNums1}
+          onChange={(e) => setManNums1(e.target.value)}
+          placeholder="7,12,23,34,45"
+          className="w-full p-3 rounded-lg bg-gray-900 border border-gray-600 text-white text-sm mb-2 focus:border-pink-500 outline-none"
+        />
+
+        <label className="block text-xs text-gray-400 mb-1">Numéro chance</label>
+        <input
+          type="number"
+          value={manChance}
+          onChange={(e) => setManChance(e.target.value)}
+          placeholder="1 à 10"
+          className="w-full p-3 rounded-lg bg-gray-900 border border-gray-600 text-white text-sm mb-2 focus:border-pink-500 outline-none"
+        />
+
+        <label className="block text-xs text-gray-400 mb-1">2nd tirage — 5 numéros (optionnel)</label>
+        <input
+          type="text"
+          value={manNums2}
+          onChange={(e) => setManNums2(e.target.value)}
+          placeholder="Laisser vide si pas de 2nd tirage"
+          className="w-full p-3 rounded-lg bg-gray-900 border border-gray-600 text-white text-sm mb-2 focus:border-pink-500 outline-none"
+        />
+
+        <label className="block text-xs text-gray-400 mb-1">Montant gagné (€)</label>
+        <input
+          type="number"
+          value={manMontant}
+          onChange={(e) => setManMontant(e.target.value)}
+          placeholder="0"
+          step="0.01"
+          className="w-full p-3 rounded-lg bg-gray-900 border border-gray-600 text-white text-sm mb-3 focus:border-pink-500 outline-none"
+        />
+
+        <button
+          onClick={enregistrerTirageManuel}
+          disabled={manSaving}
+          className="w-full p-3 rounded-lg bg-gradient-to-r from-pink-700 to-pink-600 hover:opacity-90 disabled:opacity-60 text-white font-bold transition"
+        >
+          {manSaving ? '⏳ Enregistrement...' : '✅ Enregistrer le tirage manuel'}
+        </button>
+        {manMsg && (
+          <p className={`mt-2 text-sm ${manMsg.ok ? 'text-green-400' : 'text-red-400'}`}>{manMsg.text}</p>
         )}
       </Card>
 
