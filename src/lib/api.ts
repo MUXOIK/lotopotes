@@ -70,3 +70,27 @@ export async function checkTirageInDB(dateISO: string): Promise<boolean> {
     .eq('date_tirage', dateISO)
   return (count ?? 0) > 0
 }
+
+export interface ManualTirageInput {
+  date: string
+  nums: number[]
+  chance: number
+  nums2: number[]
+  montant: number
+}
+
+export async function insertManualTirage(input: ManualTirageInput): Promise<ApiLotoComplet> {
+  const resp = await fetch(`${BACKEND_URL}?action=manual-tirage`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${ANON_KEY}`,
+      'Content-Type': 'application/json',
+      'X-Admin-Secret': ADMIN_SECRET,
+    },
+    body: JSON.stringify(input),
+  })
+  const data = await resp.json()
+  if (!resp.ok) throw new Error(data.error ?? `HTTP ${resp.status}`)
+  invalidateCache()
+  return data as ApiLotoComplet
+}
