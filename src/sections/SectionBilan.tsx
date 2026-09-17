@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { fetchBilan } from '../lib/api'
+import { supabase } from '../lib/supabase'
 import { COTISATION_TOTALE, NB_PARTICIPANTS } from '../lib/constants'
 import type { ApiBilan } from '../lib/types'
 import { LoadingWithHint, ErrorMsg, Card } from '../components/ui'
@@ -25,6 +26,7 @@ export function SectionBilan() {
   const [data, setData] = useState<ApiBilan | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [totalPaiements, setTotalPaiements] = useState(0)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -33,6 +35,13 @@ export function SectionBilan() {
       .then((d) => setData(d))
       .catch(() => setError('Erreur lors du chargement du bilan.'))
       .finally(() => setLoading(false))
+    // Total des paiements enregistrés dans l'onglet Admin (reste à 0 si indisponible)
+    supabase
+      .from('paiements')
+      .select('montant')
+      .then(({ data: rows }) => {
+        setTotalPaiements((rows ?? []).reduce((s, p) => s + Number(p.montant ?? 0), 0))
+      })
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -42,9 +51,9 @@ export function SectionBilan() {
   if (!data?.success) return <ErrorMsg message="Données indisponibles." onRetry={load} />
 
   const gains = data.gainsTotal ?? 0
-  const cagnotte = data.cagnotte ?? 0
+  const distribue = Math.max(0, totalPaiements)
+  const cagnotte = Math.max(0, (data.cagnotte ?? 0) - distribue)
   const tirages = data.tiragesEffectues ?? 0
-  const distribue = Math.max(0, gains - cagnotte)
   const roi = gains > 0 ? ((gains / COTISATION_TOTALE) * 100).toFixed(1) : '0.0'
   const gainMoyen = tirages > 0 ? (gains / tirages).toFixed(2) : '0.00'
   const gainParPart = (gains / NB_PARTICIPANTS).toFixed(2)
