@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { fetchLotoComplet, fetchForceScrape, checkTirageInDB } from '../lib/api'
 import { GRILLES, CHANCES, COTISATION_TOTALE } from '../lib/constants'
+import { supabase } from '../lib/supabase'
 import type { ApiLotoComplet } from '../lib/types'
 import { Boule } from '../components/Boule'
 import { LoadingWithHint, ErrorMsg, Card, EmptyState } from '../components/ui'
@@ -45,6 +46,7 @@ export function SectionAccueil() {
   const [data, setData] = useState<ApiLotoComplet | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [totalPaiements, setTotalPaiements] = useState<number | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -80,6 +82,16 @@ export function SectionAccueil() {
     const interval = setInterval(load, 60000)
     return () => clearInterval(interval)
   }, [load])
+
+  // Total des paiements enregistrés (même calcul que l'onglet Bilan)
+  useEffect(() => {
+    supabase
+      .from('paiements')
+      .select('montant')
+      .then(({ data: rows }) => {
+        if (rows) setTotalPaiements(rows.reduce((s, p) => s + Number(p.montant ?? 0), 0))
+      })
+  }, [])
 
   const gainsTotal = data
     ? (Object.values(data.distribution).reduce((s, d) => s + d.gains, 0) + (data.cagnotte ?? 0))
@@ -159,6 +171,11 @@ export function SectionAccueil() {
           <h3 className="text-sm font-bold text-yellow-200 mb-1">💰 Gains</h3>
           <p className="text-2xl font-bold text-yellow-300">{gainsTotal.toFixed(2)}€</p>
           <p className="text-xs text-gray-400 mt-1">Depuis le 1er juin 2026</p>
+          {totalPaiements !== null && (
+            <p className="text-xs text-gray-400 mt-1">
+              Dont <span className="text-yellow-300 font-bold">{Math.max(0, gainsTotal - totalPaiements).toFixed(2)}€</span> en attente (cagnotte)
+            </p>
+          )}
         </div>
         <div className="bg-gradient-to-br from-red-900 to-red-800 rounded-xl p-4 border-2 border-red-500">
           <h3 className="text-sm font-bold text-red-200 mb-1">💳 Solde Net</h3>
